@@ -14,7 +14,8 @@ const QUOTES = [
   { text: 'Your story is the greatest legacy that you will leave to your friends.', author: 'Steve Saint' },
 ]
 
-const QUOTE = QUOTES[Math.floor(Math.random() * QUOTES.length)]!
+// Day-of-month index: same value on server and client, rotates daily
+const QUOTE = QUOTES[new Date().getDate() % QUOTES.length]!
 
 function GoogleButton() {
   const [error, setError] = useState<string | null>(null)
