@@ -2,8 +2,31 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 
-const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+const ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
 const MAX_SIZE = 5 * 1024 * 1024 // 5 MB
+
+/** Verify the file actually matches the declared image type via magic bytes. */
+async function verifyImageMagicBytes(file: File): Promise<boolean> {
+  const bytes = new Uint8Array(await file.slice(0, 12).arrayBuffer())
+
+  switch (file.type) {
+    case 'image/jpeg':
+      return bytes[0] === 0xFF && bytes[1] === 0xD8 && bytes[2] === 0xFF
+
+    case 'image/png':
+      return bytes[0] === 0x89 && bytes[1] === 0x50 &&
+             bytes[2] === 0x4E && bytes[3] === 0x47
+
+    case 'image/webp':
+      return bytes[0] === 0x52 && bytes[1] === 0x49 &&
+             bytes[2] === 0x46 && bytes[3] === 0x46 &&
+             bytes[8] === 0x57 && bytes[9] === 0x45 &&
+             bytes[10] === 0x42 && bytes[11] === 0x50
+
+    default:
+      return false
+  }
+}
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient()
@@ -12,14 +35,22 @@ export async function POST(request: NextRequest) {
 
   const formData = await request.formData()
   const file = formData.get('file') as File | null
-  if (!file) return NextResponse.json({ error: 'No file provided' }, { status: 400 })
-  if (file.size > MAX_SIZE) return NextResponse.json({ error: 'File too large (max 5 MB)' }, { status: 400 })
-  if (!ALLOWED_TYPES.includes(file.type)) {
-    return NextResponse.json({ error: 'Invalid file type. Use JPEG, PNG, or WebP.' }, { status: 400 })
+  if (!file)                           return NextResponse.json({ error: 'No file provided' }, { status: 400 })
+  if (file.size > MAX_SIZE)            return NextResponse.json({ error: 'File too large (max 5 MB)' }, { status: 413 })
+  if (!ALLOWED_TYPES.has(file.type))   return NextResponse.json({ error: 'Invalid file type. Use JPEG, PNG, or WebP.' }, { status: 415 })
+
+  // Magic-byte check: reject if actual bytes don't match the declared type
+  const magicOk = await verifyImageMagicBytes(file)
+  if (!magicOk) {
+    return NextResponse.json(
+      { error: 'File content does not match its declared type.' },
+      { status: 422 },
+    )
   }
 
   const service = createServiceClient()
-  const ext = file.type.split('/')[1].replace('jpeg', 'jpg')
+  // Derive extension from MIME, never from the filename (prevents extension smuggling)
+  const ext  = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' }[file.type]!
   const path = `${user.id}/avatar.${ext}`
 
   const { error: uploadError } = await service.storage
@@ -30,7 +61,7 @@ export async function POST(request: NextRequest) {
 
   const { data: { publicUrl } } = service.storage.from('avatars').getPublicUrl(path)
 
-  // Bust cache by appending timestamp
+  // Bust CDN cache by appending timestamp
   const url = `${publicUrl}?t=${Date.now()}`
 
   const { error: updateError } = await service

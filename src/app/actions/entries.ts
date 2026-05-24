@@ -18,6 +18,11 @@ export async function saveEntry(formData: FormData) {
     return { error: 'Content is required.' }
   }
 
+  const MAX_CONTENT = 50_000 // ~50 KB — prevents abuse and runaway AI token costs
+  if (content.trim().length > MAX_CONTENT) {
+    return { error: `Entry is too long (max ${MAX_CONTENT.toLocaleString()} characters).` }
+  }
+
   const { error } = await supabase.from('soul_entries').insert({
     user_id: user.id,
     domain,

@@ -18,6 +18,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Missing required fields.' }, { status: 400 })
   }
 
+  // Limit question length — prevents token abuse across multiple GPT-4o calls
+  if (question.trim().length > 2_000) {
+    return NextResponse.json({ error: 'Question is too long (max 2000 characters).' }, { status: 400 })
+  }
+
   const service = createServiceClient()
 
   // ── Verify access: heir must be active, account must be legacy_active ────────
