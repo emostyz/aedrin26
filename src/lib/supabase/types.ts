@@ -6,6 +6,25 @@ export type Domain = 'childhood' | 'family' | 'career' | 'values' | 'beliefs' | 
 export type SharingStatus = 'private' | 'shareable'
 export type EntrySource = 'typed' | 'voice' | 'uploaded'
 export type RelationshipStatus = 'single' | 'partnered' | 'married' | 'separated' | 'widowed' | 'other'
+export type HorizonItemType = 'event' | 'decision' | 'concern' | 'goal'
+
+export interface HorizonItem {
+  id: string
+  user_id: string
+  type: HorizonItemType
+  title: string
+  description: string | null
+  due_date: string | null   // ISO date string YYYY-MM-DD
+  resolved: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface HorizonConnection {
+  insight: string
+  source_domain: string
+  relevance: string
+}
 
 export interface FollowUpQuestion {
   text: string

@@ -34,7 +34,15 @@ export default async function InterviewDomainPage({ params }: Props) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
 
-  const [promptsResult, entriesResult, todayResult] = await Promise.all([
+  // Profile fields that surface in specific domains
+  const PROFILE_CONTEXT_FIELD: Partial<Record<Domain, string>> = {
+    values:  'life_purpose',
+    lessons: 'biggest_regret',
+    other:   'life_description',
+  }
+  const profileField = PROFILE_CONTEXT_FIELD[domain]
+
+  const [promptsResult, entriesResult, todayResult, profileResult] = await Promise.all([
     supabase
       .from('interview_prompts')
       .select('*')
@@ -48,6 +56,9 @@ export default async function InterviewDomainPage({ params }: Props) {
       .eq('domain', domain)
       .order('created_at', { ascending: false }),
     getOrCreateTodaysPrompt(),
+    profileField
+      ? supabase.from('users').select(profileField).eq('id', user.id).single()
+      : Promise.resolve({ data: null }),
   ])
 
   const prompts = (promptsResult.data ?? []) as Prompt[]
@@ -59,6 +70,17 @@ export default async function InterviewDomainPage({ params }: Props) {
       ? { id: todayResult.prompt.id, prompt_text: todayResult.prompt.prompt_text }
       : null
 
+  // Profile context: show the relevant intake answer as a pinned card
+  const profileContextText: string | null = profileField && profileResult.data
+    ? ((profileResult.data as unknown as Record<string, unknown>)[profileField] as string | null) ?? null
+    : null
+
+  const PROFILE_CONTEXT_LABEL: Partial<Record<Domain, string>> = {
+    values:  'Your stated purpose',
+    lessons: 'Your biggest regret',
+    other:   'Your life description',
+  }
+
   return (
     <InterviewDomain
       domain={domain}
@@ -66,6 +88,11 @@ export default async function InterviewDomainPage({ params }: Props) {
       prompts={prompts}
       existingEntries={existingEntries}
       dailyPrompt={dailyPrompt}
+      profileContext={
+        profileContextText
+          ? { label: PROFILE_CONTEXT_LABEL[domain] ?? 'From your profile', text: profileContextText }
+          : null
+      }
     />
   )
 }

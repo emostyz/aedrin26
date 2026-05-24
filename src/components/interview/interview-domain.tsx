@@ -17,6 +17,7 @@ interface Props {
   prompts: Prompt[]
   existingEntries: Entry[]
   dailyPrompt?: { id: string; prompt_text: string } | null
+  profileContext?: { label: string; text: string } | null
 }
 
 // ── Follow-up Question UI ──────────────────────────────────────────────────────
@@ -138,7 +139,7 @@ function FollowUpCard({
 
 // ── Main Component ─────────────────────────────────────────────────────────────
 
-export function InterviewDomain({ domain, label, prompts, existingEntries, dailyPrompt }: Props) {
+export function InterviewDomain({ domain, label, prompts, existingEntries, dailyPrompt, profileContext }: Props) {
   // Merge daily prompt at the front if present and not already in prompts
   const effectivePrompts = (() => {
     if (!dailyPrompt) return prompts
@@ -451,12 +452,30 @@ export function InterviewDomain({ domain, label, prompts, existingEntries, daily
         </motion.div>
       )}
 
+      {/* Profile context — intake answers surfaced in the relevant domain */}
+      {profileContext && (
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0, transition: { delay: 0.15 } }}
+          className="space-y-3 pt-8 border-t border-border"
+        >
+          <div className="flex items-center gap-3">
+            <p className="text-label">From your profile</p>
+            <div className="flex-1 h-px bg-border" />
+          </div>
+          <div className="border border-border/60 rounded-lg px-4 py-3.5 space-y-1.5 bg-surface/30">
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wider">{profileContext.label}</p>
+            <p className="text-sm text-foreground/80 leading-relaxed font-light">{profileContext.text}</p>
+          </div>
+        </motion.div>
+      )}
+
       {/* Saved entries */}
       {entries.length > 0 && (
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0, transition: { delay: 0.15 } }}
-          className="space-y-4 pt-8 border-t border-border"
+          className={`space-y-4 pt-8 border-t border-border ${profileContext ? '' : ''}`}
         >
           <p className="text-label">{entries.length} saved in {label}</p>
           <Stagger className="space-y-2">

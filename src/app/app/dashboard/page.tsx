@@ -4,8 +4,10 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { FadeUp, Stagger, StaggerItem } from '@/components/ui/motion'
 import { TodayPrompt } from '@/components/dashboard/today-prompt'
 import { DailyInsight } from '@/components/dashboard/daily-insight'
+import { HorizonPanel } from '@/components/dashboard/horizon-panel'
 import { getOrCreateTodaysPrompt } from '@/app/actions/daily-prompt'
 import { getOrCreateTodaysInsight } from '@/app/actions/daily-insight'
+import { getHorizonItems } from '@/app/actions/horizon'
 import type { Domain } from '@/lib/supabase/types'
 
 const DOMAINS: { domain: Domain; label: string }[] = [
@@ -26,12 +28,13 @@ export default async function DashboardPage() {
   const service = createServiceClient()
 
   // Run all data fetches in parallel, including AI generation for today's prompt + insight
-  const [entriesResult, profileResult, legacyResult, todayPromptResult, todayInsightResult] = await Promise.all([
+  const [entriesResult, profileResult, legacyResult, todayPromptResult, todayInsightResult, horizonItems] = await Promise.all([
     supabase.from('soul_entries').select('id, domain').eq('user_id', user.id),
     supabase.from('users').select('account_state, legal_name, display_name').eq('id', user.id).single(),
     service.from('heirs').select('id, user_id').eq('email', user.email!.toLowerCase()).eq('access_status', 'active'),
     getOrCreateTodaysPrompt(),
     getOrCreateTodaysInsight(),
+    getHorizonItems(),
   ])
 
   const entries = (entriesResult.data ?? []) as { id: string; domain: Domain }[]
@@ -142,6 +145,11 @@ export default async function DashboardPage() {
           </FadeUp>
         )}
       </div>
+
+      {/* Horizon — upcoming events, decisions, concerns, goals */}
+      <FadeUp delay={0.15}>
+        <HorizonPanel initialItems={horizonItems} />
+      </FadeUp>
 
       {/* Soul Profile */}
       <FadeUp delay={0.1}>
