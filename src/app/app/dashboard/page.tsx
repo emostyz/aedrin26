@@ -212,19 +212,30 @@ export default async function DashboardPage() {
         </FadeUp>
       )}
 
-      {/* ── Greeting + daily prompt ─────────────────────────────────── */}
-      <div className="space-y-6">
+      {/* ── Greeting + daily task list ──────────────────────────────── */}
+      <div className="space-y-5">
+        {/* Header: date + greeting */}
         <FadeUp>
           <div className="space-y-1">
             <p className="text-label">
               {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
             </p>
             <p className="text-[1.75rem] font-light tracking-[-0.03em] text-foreground leading-tight">
-              {firstName ? `Good to see you, ${firstName}.` : 'Good to see you.'}
+              {todayAnsweredEntry
+                ? 'You\'re done for today.'
+                : firstName ? `Good to see you, ${firstName}.` : 'Good to see you.'}
             </p>
           </div>
         </FadeUp>
 
+        {/* Task count label */}
+        <FadeUp delay={0.03}>
+          <p className="text-xs text-muted-foreground">
+            {todayAnsweredEntry ? '1 of 1 tasks complete' : '0 of 1 tasks complete'}
+          </p>
+        </FadeUp>
+
+        {/* The task */}
         <FadeUp delay={0.05}>
           {todayPrompt ? (
             <TodayPrompt
@@ -245,6 +256,35 @@ export default async function DashboardPage() {
             </div>
           )}
         </FadeUp>
+
+        {/* Come back tomorrow — shown only when today is done */}
+        {todayAnsweredEntry && (
+          <FadeUp delay={0.1}>
+            <div className="rounded-xl border border-border/40 px-6 py-5 space-y-4 bg-surface/20">
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-foreground">
+                  {streakDays > 1
+                    ? `${streakDays}-day streak. Come back tomorrow.`
+                    : 'Come back tomorrow for your next reflection.'}
+                </p>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Daily reflection is how your story gets written. Same time tomorrow.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-2 pt-1 border-t border-border/30">
+                <Link href="/app/interview" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                  Keep going in Capture →
+                </Link>
+                <Link href="/app/review" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                  Review your entries →
+                </Link>
+                <Link href="/app/lifemap" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                  Open your life map →
+                </Link>
+              </div>
+            </div>
+          </FadeUp>
+        )}
 
         {todayInsight && (
           <FadeUp delay={0.12}>
