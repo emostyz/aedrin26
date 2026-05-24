@@ -1,14 +1,14 @@
 'use client'
 
-import { useState, useRef, useTransition } from 'react'
+import { useState, useRef, useTransition, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { saveEntry } from '@/app/actions/entries'
 import { suggestFollowUps } from '@/app/actions/ai'
-import type { Domain } from '@/lib/supabase/types'
-import type { Database } from '@/lib/supabase/types'
+import { motion, AnimatePresence, Stagger, StaggerItem } from '@/components/ui/motion'
+import type { Domain, Database } from '@/lib/supabase/types'
 
 type Prompt = Database['public']['Tables']['interview_prompts']['Row']
-type Entry = Database['public']['Tables']['soul_entries']['Row']
+type Entry  = Database['public']['Tables']['soul_entries']['Row']
 
 interface Props {
   domain: Domain
@@ -17,211 +17,363 @@ interface Props {
   existingEntries: Entry[]
 }
 
+declare global {
+  interface Window {
+    SpeechRecognition: new () => SpeechRecognition
+    webkitSpeechRecognition: new () => SpeechRecognition
+  }
+}
+
+type SpeechRecognition = EventTarget & {
+  continuous: boolean
+  interimResults: boolean
+  lang: string
+  start(): void
+  stop(): void
+  onresult: ((e: SpeechRecognitionEvent) => void) | null
+  onend: (() => void) | null
+  onerror: ((e: Event) => void) | null
+}
+
+type SpeechRecognitionEvent = Event & {
+  results: SpeechRecognitionResultList
+}
+
+type SpeechRecognitionResultList = {
+  length: number
+  item(index: number): SpeechRecognitionResult
+  [index: number]: SpeechRecognitionResult
+}
+
+type SpeechRecognitionResult = {
+  isFinal: boolean
+  [index: number]: SpeechRecognitionAlternative
+}
+
+type SpeechRecognitionAlternative = { transcript: string }
+
 export function InterviewDomain({ domain, label, prompts, existingEntries }: Props) {
-  const [promptIndex, setPromptIndex] = useState(0)
-  const [entries, setEntries] = useState<Entry[]>(existingEntries)
-  const [content, setContent] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [saved, setSaved] = useState(false)
-  const [suggestions, setSuggestions] = useState<string[]>([])
-  const [loadingSuggestions, setLoadingSuggestions] = useState(false)
-  const [isPending, startTransition] = useTransition()
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const [promptIndex, setPromptIndex]       = useState(0)
+  const [direction, setDirection]           = useState<'forward' | 'back'>('forward')
+  const [entries, setEntries]               = useState<Entry[]>(existingEntries)
+  const [content, setContent]               = useState('')
+  const [error, setError]                   = useState<string | null>(null)
+  const [savedBrief, setSavedBrief]         = useState(false)
+  const [suggestions, setSuggestions]       = useState<string[]>([])
+  const [loadingSugg, setLoadingSugg]       = useState(false)
+  const [isListening, setIsListening]       = useState(false)
+  const [voiceSupported, setVoiceSupported] = useState(false)
+  const [uploadedFile, setUploadedFile]     = useState<{ name: string; url: string } | null>(null)
+  const [uploading, setUploading]           = useState(false)
+  const [isPending, startTransition]        = useTransition()
+  const recognitionRef                      = useRef<SpeechRecognition | null>(null)
+  const fileInputRef                        = useRef<HTMLInputElement>(null)
+  const textareaRef                         = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => {
+    const SR = window.SpeechRecognition ?? window.webkitSpeechRecognition
+    setVoiceSupported(!!SR)
+  }, [])
 
   const currentPrompt = prompts[promptIndex] ?? null
-  const hasMore = promptIndex < prompts.length - 1
+  const hasNext = promptIndex < prompts.length - 1
+  const hasPrev = promptIndex > 0
 
-  function handleSkip() {
-    if (hasMore) {
-      setPromptIndex((i) => i + 1)
-      setContent('')
-      setSuggestions([])
-      setSaved(false)
-      setError(null)
-    }
+  function advance(dir: 'forward' | 'back') {
+    setDirection(dir)
+    setPromptIndex((i) => dir === 'forward' ? i + 1 : i - 1)
+    setContent('')
+    setSuggestions([])
+    setSavedBrief(false)
+    setError(null)
+    setUploadedFile(null)
   }
 
-  function handleSave() {
-    if (!content.trim()) return
-    setError(null)
+  function startListening() {
+    const SR = window.SpeechRecognition ?? window.webkitSpeechRecognition
+    if (!SR) return
+    const rec = new SR()
+    rec.continuous = true
+    rec.interimResults = true
+    rec.lang = 'en-US'
+    recognitionRef.current = rec
 
+    rec.onresult = (e: SpeechRecognitionEvent) => {
+      let transcript = ''
+      for (let i = 0; i < e.results.length; i++) {
+        transcript += e.results[i][0].transcript
+      }
+      setContent(transcript)
+    }
+    rec.onend = () => setIsListening(false)
+    rec.onerror = () => setIsListening(false)
+    rec.start()
+    setIsListening(true)
+  }
+
+  function stopListening() {
+    recognitionRef.current?.stop()
+    setIsListening(false)
+  }
+
+  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploading(true)
+    setError(null)
+    const fd = new FormData()
+    fd.set('file', file)
+    const res = await fetch('/api/artifacts', { method: 'POST', body: fd })
+    const json = await res.json()
+    setUploading(false)
+    if (json.error) { setError(json.error); return }
+    setUploadedFile({ name: json.name, url: json.url })
+  }
+
+  function doSave(text: string, mediaUrl?: string) {
+    if (!text.trim()) return
+    setError(null)
     const fd = new FormData()
     fd.set('domain', domain)
-    fd.set('content', content.trim())
+    fd.set('content', text.trim())
     if (currentPrompt) fd.set('prompt_id', currentPrompt.id)
+    if (mediaUrl) fd.set('media_url', mediaUrl)
 
     startTransition(async () => {
       const result = await saveEntry(fd)
-      if (result?.error) {
-        setError(result.error)
-        return
-      }
-      setSaved(true)
-      // Optimistically prepend the new entry to the list
-      setEntries((prev) => [
-        {
-          id: crypto.randomUUID(),
-          user_id: '',
-          domain,
-          prompt_id: currentPrompt?.id ?? null,
-          content: content.trim(),
-          media_url: null,
-          sharing_status: 'private',
-          bound_recipient_id: null,
-          source: 'typed',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        },
-        ...prev,
-      ])
+      if (result?.error) { setError(result.error); return }
+      setEntries((prev) => [{
+        id: crypto.randomUUID(), user_id: '', domain,
+        prompt_id: currentPrompt?.id ?? null,
+        content: text.trim(),
+        media_url: mediaUrl ?? null,
+        sharing_status: 'private', bound_recipient_id: null, source: 'typed',
+        created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+      }, ...prev])
       setContent('')
       setSuggestions([])
-      setTimeout(() => setSaved(false), 2000)
+      setUploadedFile(null)
+      setSavedBrief(true)
+      setTimeout(() => setSavedBrief(false), 2000)
     })
   }
 
   async function handleSuggest() {
     if (!content.trim()) return
-    setLoadingSuggestions(true)
+    setLoadingSugg(true)
     setSuggestions([])
     const result = await suggestFollowUps(domain, content.trim())
     setSuggestions(result)
-    setLoadingSuggestions(false)
-  }
-
-  function applySuggestion(suggestion: string) {
-    const fd = new FormData()
-    fd.set('domain', domain)
-    fd.set('content', suggestion)
-    if (currentPrompt) fd.set('prompt_id', currentPrompt.id)
-
-    startTransition(async () => {
-      const result = await saveEntry(fd)
-      if (result?.error) {
-        setError(result.error)
-        return
-      }
-      setSuggestions((prev) => prev.filter((s) => s !== suggestion))
-    })
+    setLoadingSugg(false)
   }
 
   return (
-    <div className="space-y-10">
-      <div className="flex items-center gap-3">
-        <Link href="/app/interview" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-          ← Capture
-        </Link>
-        <span className="text-muted-foreground">/</span>
-        <h2 className="text-sm font-medium text-foreground">{label}</h2>
-      </div>
+    <div className="space-y-16">
+      {/* Breadcrumb */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        className="flex items-center gap-2 text-xs text-muted-foreground"
+      >
+        <Link href="/app/interview" className="hover:text-foreground transition-colors">Capture</Link>
+        <span>/</span>
+        <span className="text-foreground">{label}</span>
+      </motion.div>
 
-      {/* Current prompt */}
-      {currentPrompt ? (
-        <div className="space-y-5">
-          <div className="space-y-1">
-            <p className="text-xs text-muted-foreground uppercase tracking-widest">
-              {promptIndex + 1} of {prompts.length}
-            </p>
-            <p className="text-base text-foreground leading-relaxed">
-              {currentPrompt.text}
-            </p>
-          </div>
-
-          <textarea
-            ref={textareaRef}
-            value={content}
-            onChange={(e) => {
-              setContent(e.target.value)
-              setSaved(false)
-            }}
-            placeholder="Write your response…"
-            rows={6}
-            className="w-full rounded-lg border border-border bg-background px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none"
-            aria-label="Your response"
-          />
-
-          {error && (
-            <p role="alert" className="text-sm text-destructive">{error}</p>
-          )}
-
-          {saved && (
-            <p role="status" className="text-sm text-muted-foreground">Saved.</p>
-          )}
-
-          <div className="flex flex-wrap gap-3">
-            <button
-              onClick={handleSave}
-              disabled={!content.trim() || isPending}
-              className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-40"
+      {/* Question */}
+      {currentPrompt && (
+        <div className="space-y-10">
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={`${promptIndex}-${direction}`}
+              initial={{ opacity: 0, x: direction === 'forward' ? 24 : -24 }}
+              animate={{ opacity: 1, x: 0, transition: { duration: 0.32, ease: [0.25, 0.1, 0.25, 1] } }}
+              exit={{ opacity: 0, x: direction === 'forward' ? -24 : 24, transition: { duration: 0.2 } }}
+              className="space-y-3"
             >
-              {isPending ? 'Saving…' : 'Save'}
-            </button>
-            <button
-              onClick={handleSuggest}
-              disabled={!content.trim() || loadingSuggestions || isPending}
-              className="rounded-md border border-border px-4 py-2 text-sm text-muted-foreground hover:text-foreground hover:border-foreground/30 disabled:opacity-40 transition-colors"
-            >
-              {loadingSuggestions ? 'Thinking…' : 'Suggest follow-ups'}
-            </button>
-            {hasMore && (
-              <button
-                onClick={handleSkip}
-                className="rounded-md px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+              <p className="text-label">{promptIndex + 1} / {prompts.length}</p>
+              <p className="text-[1.2rem] font-light leading-relaxed text-foreground tracking-[-0.01em]">
+                {currentPrompt.text}
+              </p>
+            </motion.div>
+          </AnimatePresence>
+
+          {/* Input area */}
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0, transition: { delay: 0.1, duration: 0.35 } }}
+            className="space-y-3"
+          >
+            <textarea
+              ref={textareaRef}
+              value={content}
+              onChange={(e) => { setContent(e.target.value); setSavedBrief(false) }}
+              placeholder={isListening ? 'Listening…' : 'Write your response…'}
+              rows={6}
+              aria-label="Your response"
+              className="w-full bg-input border border-border rounded-lg px-4 py-3.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-none transition-all"
+            />
+
+            {/* Uploaded file badge */}
+            {uploadedFile && (
+              <motion.div
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex items-center gap-2 text-xs text-muted-foreground"
               >
+                <span className="text-foreground">↑</span> {uploadedFile.name}
+                <button onClick={() => setUploadedFile(null)} className="hover:text-destructive transition-colors">×</button>
+              </motion.div>
+            )}
+
+            {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
+
+            <AnimatePresence>
+              {savedBrief && (
+                <motion.p
+                  role="status"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="text-xs text-muted-foreground"
+                >
+                  Saved.
+                </motion.p>
+              )}
+            </AnimatePresence>
+
+            {/* Actions row */}
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                onClick={() => doSave(content, uploadedFile?.url)}
+                disabled={!content.trim() || isPending}
+                className="bg-primary text-primary-foreground rounded-md px-4 py-2 text-xs font-medium hover:opacity-90 disabled:opacity-30 transition-opacity"
+              >
+                {isPending ? 'Saving…' : 'Save'}
+              </button>
+
+              {voiceSupported && (
+                <button
+                  onClick={isListening ? stopListening : startListening}
+                  className={`rounded-md px-4 py-2 text-xs border transition-colors ${
+                    isListening
+                      ? 'border-foreground/30 text-foreground bg-muted'
+                      : 'border-border text-muted-foreground hover:text-foreground hover:border-foreground/20'
+                  }`}
+                >
+                  {isListening ? '⏹ Stop' : '⏺ Voice'}
+                </button>
+              )}
+
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                className="rounded-md px-4 py-2 text-xs border border-border text-muted-foreground hover:text-foreground hover:border-foreground/20 disabled:opacity-40 transition-colors"
+              >
+                {uploading ? 'Uploading…' : '↑ Attach'}
+              </button>
+              <input ref={fileInputRef} type="file" className="hidden"
+                accept="image/*,application/pdf,audio/*"
+                onChange={handleFileUpload}
+              />
+
+              <button
+                onClick={handleSuggest}
+                disabled={!content.trim() || loadingSugg || isPending}
+                className="rounded-md px-4 py-2 text-xs border border-border text-muted-foreground hover:text-foreground hover:border-foreground/20 disabled:opacity-40 transition-colors"
+              >
+                {loadingSugg ? 'Thinking…' : 'Follow-ups'}
+              </button>
+            </div>
+          </motion.div>
+
+          {/* AI suggestions */}
+          <AnimatePresence>
+            {suggestions.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                className="space-y-3"
+              >
+                <p className="text-label">Suggested follow-ups</p>
+                <Stagger className="space-y-2">
+                  {suggestions.map((s, i) => (
+                    <StaggerItem key={i}>
+                      <div className="flex items-start justify-between gap-4 border border-border rounded-lg px-4 py-3">
+                        <p className="text-sm text-foreground leading-relaxed flex-1">{s}</p>
+                        <button
+                          onClick={() => { doSave(s); setSuggestions((p) => p.filter((_, j) => j !== i)) }}
+                          disabled={isPending}
+                          className="text-xs text-muted-foreground hover:text-foreground transition-colors shrink-0 disabled:opacity-40"
+                        >
+                          Save
+                        </button>
+                      </div>
+                    </StaggerItem>
+                  ))}
+                </Stagger>
+                <p className="text-xs text-muted-foreground">Accept or ignore — never auto-saved.</p>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Navigation */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1, transition: { delay: 0.2 } }}
+            className="flex items-center gap-4"
+          >
+            {hasPrev && (
+              <button onClick={() => advance('back')}
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                ← Previous
+              </button>
+            )}
+            {hasNext && (
+              <button onClick={() => advance('forward')}
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors ml-auto">
                 Skip →
               </button>
             )}
-          </div>
-
-          {/* AI follow-up suggestions */}
-          {suggestions.length > 0 && (
-            <div className="space-y-2 pt-2">
-              <p className="text-xs text-muted-foreground uppercase tracking-widest">Suggested follow-ups</p>
-              <ul className="space-y-2">
-                {suggestions.map((s, i) => (
-                  <li key={i} className="flex items-start gap-3 text-sm text-foreground border border-border rounded-lg px-4 py-3">
-                    <span className="flex-1 leading-relaxed">{s}</span>
-                    <button
-                      onClick={() => applySuggestion(s)}
-                      disabled={isPending}
-                      className="shrink-0 text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground disabled:opacity-40"
-                    >
-                      Save this
-                    </button>
-                  </li>
-                ))}
-              </ul>
-              <p className="text-xs text-muted-foreground">These are suggestions — accept or ignore any of them.</p>
-            </div>
-          )}
-        </div>
-      ) : (
-        <div className="rounded-lg border border-border px-5 py-8 text-center">
-          <p className="text-sm text-muted-foreground">No prompts available for this domain yet.</p>
+          </motion.div>
         </div>
       )}
 
-      {/* Saved entries for this domain */}
+      {!currentPrompt && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+          className="border border-border rounded-lg px-5 py-10 text-center">
+          <p className="text-sm text-muted-foreground">No prompts available for this domain.</p>
+        </motion.div>
+      )}
+
+      {/* Saved entries */}
       {entries.length > 0 && (
-        <div className="space-y-3 pt-4 border-t border-border">
-          <p className="text-xs text-muted-foreground uppercase tracking-widest">
-            {entries.length} {entries.length === 1 ? 'entry' : 'entries'} in {label}
-          </p>
-          <ul className="space-y-2">
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0, transition: { delay: 0.15 } }}
+          className="space-y-4 pt-8 border-t border-border"
+        >
+          <p className="text-label">{entries.length} saved in {label}</p>
+          <Stagger className="space-y-2">
             {entries.map((entry) => (
-              <li key={entry.id} className="rounded-lg border border-border px-4 py-3">
-                <p className="text-sm text-foreground leading-relaxed line-clamp-3">{entry.content}</p>
-                <p className="mt-1.5 text-xs text-muted-foreground">
-                  {entry.sharing_status === 'private' ? 'Private' : 'Shareable'} ·{' '}
-                  {new Date(entry.created_at).toLocaleDateString()}
-                </p>
-              </li>
+              <StaggerItem key={entry.id}>
+                <div className="border border-border rounded-lg px-4 py-3 space-y-1.5">
+                  <p className="text-sm text-foreground leading-relaxed line-clamp-3">{entry.content}</p>
+                  {entry.media_url && (
+                    <p className="text-xs text-muted-foreground">↑ Attachment</p>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    {entry.sharing_status === 'private' ? 'Private' : 'Shareable'} · {new Date(entry.created_at).toLocaleDateString()}
+                  </p>
+                </div>
+              </StaggerItem>
             ))}
-          </ul>
-          <Link href="/app/review" className="text-xs underline underline-offset-4 text-muted-foreground hover:text-foreground">
-            Review and tag sharing status →
+          </Stagger>
+          <Link href="/app/review" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+            Review & tag sharing →
           </Link>
-        </div>
+        </motion.div>
       )}
     </div>
   )

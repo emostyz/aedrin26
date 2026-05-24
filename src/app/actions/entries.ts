@@ -12,6 +12,7 @@ export async function saveEntry(formData: FormData) {
   const domain = formData.get('domain') as Domain
   const content = formData.get('content') as string
   const promptId = formData.get('prompt_id') as string | null
+  const mediaUrl = formData.get('media_url') as string | null
 
   if (!domain || !content?.trim()) {
     return { error: 'Content is required.' }
@@ -22,7 +23,8 @@ export async function saveEntry(formData: FormData) {
     domain,
     content: content.trim(),
     prompt_id: promptId || null,
-    source: 'typed',
+    media_url: mediaUrl || null,
+    source: mediaUrl ? 'uploaded' : 'typed',
   })
 
   if (error) return { error: error.message }

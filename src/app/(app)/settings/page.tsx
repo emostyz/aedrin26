@@ -1,4 +1,6 @@
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
+import { FadeUp, Stagger, StaggerItem } from '@/components/ui/motion'
 import { HeirManager } from '@/components/settings/heir-manager'
 import { ExecutorManager } from '@/components/settings/executor-manager'
 import type { Domain } from '@/lib/supabase/types'
@@ -37,33 +39,70 @@ export default async function SettingsPage() {
   }))
 
   return (
-    <div className="space-y-12">
-      <div>
-        <h2 className="text-xl font-semibold text-foreground">Settings</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Manage who may access your Soul Profile and who may initiate the verification process.
+    <div className="space-y-16">
+      <FadeUp className="space-y-2">
+        <p className="text-label">Settings</p>
+        <p className="text-[1.75rem] font-light tracking-[-0.03em] text-foreground leading-tight">
+          Who holds the keys.
         </p>
-      </div>
+        <p className="text-sm text-muted-foreground">
+          Designate heirs to receive your Soul Profile and executors to initiate the verification process.
+        </p>
+      </FadeUp>
 
-      <HeirManager initialHeirs={heirs} />
+      <FadeUp delay={0.1}>
+        <HeirManager initialHeirs={heirs} />
+      </FadeUp>
 
       <div className="border-t border-border" />
 
-      <ExecutorManager initialExecutors={executors} />
+      <FadeUp delay={0.15}>
+        <ExecutorManager initialExecutors={executors} />
+      </FadeUp>
 
       <div className="border-t border-border" />
 
-      <section className="space-y-2">
-        <h3 className="text-sm font-semibold text-foreground">Memorialization</h3>
-        <p className="text-xs text-muted-foreground">
-          If a memorialization request has been initiated by one of your executors, you can view its
-          status and cancel it here during the grace period.
-        </p>
-        <a href="/app/settings/memorialization"
-          className="inline-block text-sm underline underline-offset-4 text-muted-foreground hover:text-foreground">
-          View memorialization status →
-        </a>
-      </section>
+      <Stagger className="space-y-3">
+        <StaggerItem>
+          <div className="space-y-0.5">
+            <p className="text-label">Memorialization</p>
+            <p className="text-xs text-muted-foreground">
+              View or cancel an active memorialization request during the grace period.
+            </p>
+          </div>
+        </StaggerItem>
+        <StaggerItem>
+          <Link
+            href="/app/settings/memorialization"
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            View memorialization status →
+          </Link>
+        </StaggerItem>
+      </Stagger>
+
+      <div className="border-t border-border" />
+
+      <Stagger className="space-y-3">
+        <StaggerItem>
+          <div className="space-y-0.5">
+            <p className="text-label">Account</p>
+            <p className="text-xs text-muted-foreground">
+              Export your data or permanently delete your account.
+            </p>
+          </div>
+        </StaggerItem>
+        <StaggerItem>
+          <div className="flex gap-6 text-xs text-muted-foreground">
+            <Link href="/app/export" className="hover:text-foreground transition-colors">
+              Export data →
+            </Link>
+            <Link href="/app/settings/delete" className="hover:text-destructive transition-colors">
+              Delete account →
+            </Link>
+          </div>
+        </StaggerItem>
+      </Stagger>
     </div>
   )
 }

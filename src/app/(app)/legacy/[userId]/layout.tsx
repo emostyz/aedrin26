@@ -1,18 +1,16 @@
-// Persistent artifice notice — displayed on every legacy-mode surface.
-// §4.3: never removed, never minimized by default.
 export default function LegacyLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen flex flex-col">
-      <div className="bg-muted border-b border-border px-4 py-2.5">
-        <p className="text-xs text-muted-foreground text-center max-w-4xl mx-auto">
-          You are interacting with an <strong className="font-medium text-foreground">AI representation</strong> built
-          from recorded memories and reflections. This is not the person, not a conscious entity, and does not
-          have feelings. Responses are grounded in what was recorded — nothing more.
+    <div className="min-h-dvh flex flex-col">
+      {/* §4.3 persistent artifice notice — always visible, never removable */}
+      <div className="border-b border-border px-6 py-3">
+        <p className="text-xs text-muted-foreground text-center max-w-2xl mx-auto leading-relaxed">
+          You are speaking with an{' '}
+          <span className="text-foreground">AI representation</span>{' '}
+          built from recorded memories and reflections — not a conscious being, not the person.
+          Responses are drawn only from what was recorded.
         </p>
       </div>
-      <div className="flex-1">
-        {children}
-      </div>
+      <div className="flex-1 flex flex-col">{children}</div>
     </div>
   )
 }

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
+import { motion, AnimatePresence } from '@/components/ui/motion'
 import { addHeir, removeHeir, updateHeirPermissions } from '@/app/actions/settings'
 import type { Domain } from '@/lib/supabase/types'
 
@@ -23,45 +24,40 @@ interface Props {
 }
 
 export function HeirManager({ initialHeirs }: Props) {
-  const [heirs, setHeirs] = useState<Heir[]>(initialHeirs)
-  const [showForm, setShowForm] = useState(false)
+  const [heirs, setHeirs]         = useState<Heir[]>(initialHeirs)
+  const [showForm, setShowForm]   = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
-  const [isPending, startTransition] = useTransition()
+  const [isPending, start]        = useTransition()
 
   function handleAdd(formData: FormData) {
     setFormError(null)
-    startTransition(async () => {
+    start(async () => {
       const result = await addHeir(formData)
       if (result?.error) { setFormError(result.error); return }
-      setHeirs((prev) => [
-        ...prev,
-        {
-          id: result.heirId!,
-          name: formData.get('name') as string,
-          relationship: formData.get('relationship') as string,
-          email: formData.get('email') as string,
-          permissions: Object.fromEntries(ALL_DOMAINS.map((d) => [d, false])) as Record<Domain, boolean>,
-        },
-      ])
+      setHeirs((prev) => [...prev, {
+        id: result.heirId!,
+        name: formData.get('name') as string,
+        relationship: formData.get('relationship') as string,
+        email: formData.get('email') as string,
+        permissions: Object.fromEntries(ALL_DOMAINS.map((d) => [d, false])) as Record<Domain, boolean>,
+      }])
       setShowForm(false)
     })
   }
 
   function handleRemove(id: string) {
-    startTransition(async () => {
+    start(async () => {
       const result = await removeHeir(id)
       if (!result?.error) setHeirs((prev) => prev.filter((h) => h.id !== id))
     })
   }
 
-  function handleTogglePermission(heirId: string, domain: Domain, current: boolean) {
-    startTransition(async () => {
+  function handleToggle(heirId: string, domain: Domain, current: boolean) {
+    start(async () => {
       const result = await updateHeirPermissions(heirId, domain, !current)
       if (!result?.error) {
         setHeirs((prev) => prev.map((h) =>
-          h.id === heirId
-            ? { ...h, permissions: { ...h.permissions, [domain]: !current } }
-            : h
+          h.id === heirId ? { ...h, permissions: { ...h.permissions, [domain]: !current } } : h
         ))
       }
     })
@@ -70,91 +66,111 @@ export function HeirManager({ initialHeirs }: Props) {
   return (
     <section className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-sm font-semibold text-foreground">Heirs</h3>
-          <p className="text-xs text-muted-foreground mt-0.5">
+        <div className="space-y-0.5">
+          <p className="text-label">Heirs</p>
+          <p className="text-xs text-muted-foreground">
             Designate who may access your Soul Profile after death, and which domains they may see.
           </p>
         </div>
         <button
           onClick={() => setShowForm((v) => !v)}
-          className="text-sm underline underline-offset-4 text-muted-foreground hover:text-foreground"
+          className="text-xs text-muted-foreground hover:text-foreground transition-colors"
         >
           {showForm ? 'Cancel' : '+ Add heir'}
         </button>
       </div>
 
-      {showForm && (
-        <form action={handleAdd} className="rounded-lg border border-border px-5 py-4 space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="space-y-1">
-              <label htmlFor="heir-name" className="text-xs font-medium text-foreground">Name</label>
-              <input id="heir-name" name="name" required
-                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
-            </div>
-            <div className="space-y-1">
-              <label htmlFor="heir-rel" className="text-xs font-medium text-foreground">Relationship</label>
-              <input id="heir-rel" name="relationship" placeholder="e.g. Daughter" required
-                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
-            </div>
-            <div className="space-y-1">
-              <label htmlFor="heir-email" className="text-xs font-medium text-foreground">Email</label>
-              <input id="heir-email" name="email" type="email" required
-                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
-            </div>
-          </div>
-          {formError && <p role="alert" className="text-xs text-destructive">{formError}</p>}
-          <button type="submit" disabled={isPending}
-            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">
-            {isPending ? 'Adding…' : 'Add heir'}
-          </button>
-        </form>
-      )}
+      <AnimatePresence>
+        {showForm && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.25 }}
+            className="overflow-hidden"
+          >
+            <form action={handleAdd} className="border border-border rounded-lg px-5 py-5 space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="space-y-1.5">
+                  <label htmlFor="heir-name" className="text-label">Name</label>
+                  <input id="heir-name" name="name" required placeholder="Full name"
+                    className="w-full bg-input border border-border rounded-md px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring" />
+                </div>
+                <div className="space-y-1.5">
+                  <label htmlFor="heir-rel" className="text-label">Relationship</label>
+                  <input id="heir-rel" name="relationship" placeholder="e.g. Daughter" required
+                    className="w-full bg-input border border-border rounded-md px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring" />
+                </div>
+                <div className="space-y-1.5">
+                  <label htmlFor="heir-email" className="text-label">Email</label>
+                  <input id="heir-email" name="email" type="email" required
+                    className="w-full bg-input border border-border rounded-md px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring" />
+                </div>
+              </div>
+              {formError && <p role="alert" className="text-xs text-destructive">{formError}</p>}
+              <button type="submit" disabled={isPending}
+                className="bg-primary text-primary-foreground rounded-md px-5 py-2.5 text-xs font-medium hover:opacity-90 disabled:opacity-40 transition-opacity">
+                {isPending ? 'Adding…' : 'Add heir'}
+              </button>
+            </form>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {heirs.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No heirs designated yet.</p>
+        <div className="border border-border rounded-lg px-5 py-8 text-center">
+          <p className="text-sm text-muted-foreground">No heirs designated yet.</p>
+        </div>
       ) : (
-        <ul className="space-y-4">
-          {heirs.map((heir) => (
-            <li key={heir.id} className="rounded-lg border border-border px-5 py-4 space-y-4">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="text-sm font-medium text-foreground">{heir.name}</p>
-                  <p className="text-xs text-muted-foreground">{heir.relationship} · {heir.email}</p>
+        <AnimatePresence initial={false}>
+          <div className="space-y-3">
+            {heirs.map((heir) => (
+              <motion.div
+                key={heir.id}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4, transition: { duration: 0.15 } }}
+                className="border border-border rounded-lg px-5 py-4 space-y-4"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="space-y-0.5">
+                    <p className="text-sm text-foreground">{heir.name}</p>
+                    <p className="text-xs text-muted-foreground">{heir.relationship} · {heir.email}</p>
+                  </div>
+                  <button onClick={() => handleRemove(heir.id)} disabled={isPending}
+                    className="text-xs text-muted-foreground hover:text-destructive transition-colors disabled:opacity-40">
+                    Remove
+                  </button>
                 </div>
-                <button onClick={() => handleRemove(heir.id)} disabled={isPending}
-                  className="text-xs text-muted-foreground hover:text-destructive transition-colors disabled:opacity-40">
-                  Remove
-                </button>
-              </div>
 
-              <div>
-                <p className="text-xs text-muted-foreground mb-2">Domains this heir may access:</p>
-                <div className="flex flex-wrap gap-2">
-                  {ALL_DOMAINS.map((domain) => {
-                    const allowed = heir.permissions[domain]
-                    return (
-                      <button
-                        key={domain}
-                        onClick={() => handleTogglePermission(heir.id, domain, allowed)}
-                        disabled={isPending}
-                        aria-pressed={allowed}
-                        className={[
-                          'rounded-full px-3 py-1 text-xs font-medium transition-colors disabled:opacity-50',
-                          allowed
-                            ? 'bg-foreground text-background'
-                            : 'border border-border text-muted-foreground hover:border-foreground/30',
-                        ].join(' ')}
-                      >
-                        {DOMAIN_LABELS[domain]}
-                      </button>
-                    )
-                  })}
+                <div className="space-y-2">
+                  <p className="text-[11px] text-muted-foreground uppercase tracking-wider">Domains</p>
+                  <div className="flex flex-wrap gap-2">
+                    {ALL_DOMAINS.map((domain) => {
+                      const allowed = heir.permissions[domain]
+                      return (
+                        <button
+                          key={domain}
+                          onClick={() => handleToggle(heir.id, domain, allowed)}
+                          disabled={isPending}
+                          aria-pressed={allowed}
+                          className={[
+                            'rounded-full px-3 py-1 text-xs font-medium transition-all duration-200 disabled:opacity-50',
+                            allowed
+                              ? 'bg-primary text-primary-foreground'
+                              : 'border border-border text-muted-foreground hover:border-foreground/20',
+                          ].join(' ')}
+                        >
+                          {DOMAIN_LABELS[domain]}
+                        </button>
+                      )
+                    })}
+                  </div>
                 </div>
-              </div>
-            </li>
-          ))}
-        </ul>
+              </motion.div>
+            ))}
+          </div>
+        </AnimatePresence>
       )}
     </section>
   )

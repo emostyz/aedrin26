@@ -1,15 +1,18 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { FadeUp, Stagger, StaggerItem } from '@/components/ui/motion'
 import type { Domain } from '@/lib/supabase/types'
 
-const DOMAINS: Domain[] = ['childhood', 'family', 'career', 'values', 'beliefs', 'lessons', 'messages']
-
-const DOMAIN_LABELS: Record<Domain, string> = {
-  childhood: 'Childhood', family: 'Family', career: 'Career',
-  values: 'Values', beliefs: 'Beliefs', lessons: 'Lessons',
-  messages: 'Messages', other: 'Other',
-}
+const DOMAINS: { domain: Domain; label: string }[] = [
+  { domain: 'childhood', label: 'Childhood' },
+  { domain: 'family',    label: 'Family' },
+  { domain: 'career',    label: 'Career' },
+  { domain: 'values',    label: 'Values' },
+  { domain: 'beliefs',   label: 'Beliefs' },
+  { domain: 'lessons',   label: 'Lessons' },
+  { domain: 'messages',  label: 'Messages' },
+]
 
 export default async function DashboardPage() {
   const supabase = await createClient()
@@ -18,113 +21,115 @@ export default async function DashboardPage() {
 
   const service = createServiceClient()
 
-  const [entriesResult, profileResult, legacyAccessResult] = await Promise.all([
+  const [entriesResult, profileResult, legacyResult] = await Promise.all([
     supabase.from('soul_entries').select('id, domain').eq('user_id', user.id),
-    supabase.from('users').select('account_state').eq('id', user.id).single(),
-    service.from('heirs').select('id, user_id, name')
-      .eq('email', user.email!.toLowerCase()).eq('access_status', 'active'),
+    supabase.from('users').select('account_state, legal_name').eq('id', user.id).single(),
+    service.from('heirs').select('id, user_id').eq('email', user.email!.toLowerCase()).eq('access_status', 'active'),
   ])
 
   const entries = (entriesResult.data ?? []) as { id: string; domain: Domain }[]
-  const profile = profileResult.data as { account_state: string } | null
+  const profile = profileResult.data as { account_state: string; legal_name: string } | null
+  const legacyHeirs = (legacyResult.data ?? []) as { id: string; user_id: string }[]
 
-  const entryCountByDomain = (entries ?? []).reduce<Record<string, number>>((acc, e) => {
+  const countByDomain = entries.reduce<Record<string, number>>((acc, e) => {
     acc[e.domain] = (acc[e.domain] ?? 0) + 1
     return acc
   }, {})
 
-  const totalEntries = entries?.length ?? 0
-  const accountState = profile?.account_state ?? 'active'
+  const totalEntries = entries.length
 
-  // Filter to only legacy_active accounts
-  const legacyAccess = (legacyAccessResult.data ?? []) as { id: string; user_id: string; name: string }[]
-  const legacyActiveHeirs: { userId: string; deceasedName: string }[] = []
-  for (const h of legacyAccess) {
-    const { data: deceasedUser } = await service
-      .from('users')
-      .select('id, legal_name, display_name, account_state')
-      .eq('id', h.user_id)
-      .eq('account_state', 'legacy_active')
-      .single() as { data: { id: string; legal_name: string; display_name: string | null; account_state: string } | null }
-    if (deceasedUser) {
-      legacyActiveHeirs.push({
-        userId: deceasedUser.id,
-        deceasedName: deceasedUser.display_name ?? deceasedUser.legal_name,
-      })
+  // Resolve legacy_active accounts for this heir
+  const legacyAccess: { userId: string; name: string }[] = []
+  for (const h of legacyHeirs) {
+    const { data } = await service.from('users').select('id, legal_name, display_name, account_state')
+      .eq('id', h.user_id).eq('account_state', 'legacy_active').single()
+    if (data) {
+      const d = data as { id: string; legal_name: string; display_name: string | null; account_state: string }
+      legacyAccess.push({ userId: d.id, name: d.display_name ?? d.legal_name })
     }
   }
 
+  const isMemoralizing = profile?.account_state === 'memorializing'
+
   return (
-    <div className="space-y-10">
-      {/* Legacy access banner — shown to heirs of legacy_active accounts */}
-      {legacyActiveHeirs.length > 0 && (
-        <div className="rounded-lg border border-border bg-muted/50 px-5 py-4 space-y-3">
-          <p className="text-xs text-muted-foreground uppercase tracking-widest">Legacy access</p>
-          {legacyActiveHeirs.map((h) => (
-            <div key={h.userId} className="flex items-center justify-between">
-              <p className="text-sm text-foreground">{h.deceasedName}</p>
-              <Link
-                href={`/app/legacy/${h.userId}`}
-                className="text-sm underline underline-offset-4 text-muted-foreground hover:text-foreground"
-              >
-                Open →
-              </Link>
+    <div className="space-y-16">
+      {/* Legacy access */}
+      {legacyAccess.length > 0 && (
+        <FadeUp>
+          <div className="border border-border rounded-lg p-5 space-y-4">
+            <p className="text-label">Legacy access</p>
+            <div className="space-y-2">
+              {legacyAccess.map((a) => (
+                <div key={a.userId} className="flex items-center justify-between">
+                  <p className="text-sm text-foreground">{a.name}</p>
+                  <Link href={`/app/legacy/${a.userId}`}
+                    className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                    Open →
+                  </Link>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          </div>
+        </FadeUp>
       )}
 
-      {/* Memorialization warning banner */}
-      {accountState === 'memorializing' && (
-        <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-5 py-4">
-          <p className="text-sm font-medium text-foreground">A memorialization request is active for your account.</p>
-          <p className="text-xs text-muted-foreground mt-1">
-            If this was initiated in error, you can cancel it during the grace period.{' '}
-            <Link href="/app/settings/memorialization" className="underline underline-offset-4 hover:text-foreground">
-              View status →
-            </Link>
+      {/* Memorialization warning */}
+      {isMemoralizing && (
+        <FadeUp>
+          <div className="border border-destructive/20 rounded-lg p-5">
+            <p className="text-sm text-foreground">A memorialization request is active.</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Cancel it during the grace period if this was initiated in error.{' '}
+              <Link href="/app/settings/memorialization" className="text-foreground underline underline-offset-4">
+                View →
+              </Link>
+            </p>
+          </div>
+        </FadeUp>
+      )}
+
+      {/* Soul Profile header */}
+      <FadeUp>
+        <div className="space-y-1">
+          <p className="text-label">Soul Profile</p>
+          <p className="text-[2rem] font-light tracking-[-0.03em] text-foreground leading-tight">
+            {totalEntries === 0
+              ? 'Begin capturing your life.'
+              : `${totalEntries} ${totalEntries === 1 ? 'entry' : 'entries'}.`}
           </p>
         </div>
-      )}
+      </FadeUp>
 
-      <div>
-        <h2 className="text-xl font-semibold text-foreground">Your Soul Profile</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {totalEntries === 0
-            ? "You haven't captured anything yet. Start with any domain below."
-            : `${totalEntries} ${totalEntries === 1 ? 'entry' : 'entries'} captured across your life.`}
-        </p>
-      </div>
-
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        {DOMAINS.map((domain) => {
-          const count = entryCountByDomain[domain] ?? 0
+      {/* Domain grid */}
+      <Stagger className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+        {DOMAINS.map(({ domain, label }) => {
+          const count = countByDomain[domain] ?? 0
           return (
-            <Link
-              key={domain}
-              href={`/app/interview/${domain}`}
-              className="group rounded-lg border border-border p-4 hover:border-foreground/30 transition-colors"
-            >
-              <p className="text-sm font-medium text-foreground">{DOMAIN_LABELS[domain]}</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {count === 0 ? 'Not started' : `${count} ${count === 1 ? 'entry' : 'entries'}`}
-              </p>
-            </Link>
+            <StaggerItem key={domain}>
+              <Link
+                href={`/app/interview/${domain}`}
+                className="group block border border-border rounded-lg p-4 hover:border-foreground/20 hover:bg-surface transition-all duration-200"
+              >
+                <p className="text-sm text-foreground">{label}</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {count === 0 ? '—' : count}
+                </p>
+              </Link>
+            </StaggerItem>
           )
         })}
-      </div>
+      </Stagger>
 
-      <div className="flex flex-wrap gap-4 text-sm">
-        <Link href="/app/review" className="underline underline-offset-4 text-muted-foreground hover:text-foreground">
-          Review all entries
-        </Link>
-        <Link href="/app/lifemap" className="underline underline-offset-4 text-muted-foreground hover:text-foreground">
-          Your life map
-        </Link>
-        <Link href="/app/settings" className="underline underline-offset-4 text-muted-foreground hover:text-foreground">
-          Heirs & executors
-        </Link>
-      </div>
+      {/* Quick links */}
+      <FadeUp delay={0.3}>
+        <div className="flex flex-wrap gap-6 text-xs text-muted-foreground">
+          <Link href="/app/review" className="hover:text-foreground transition-colors">Review entries</Link>
+          <Link href="/app/lifemap" className="hover:text-foreground transition-colors">Life map</Link>
+          <Link href="/app/values" className="hover:text-foreground transition-colors">Values</Link>
+          <Link href="/app/settings" className="hover:text-foreground transition-colors">Heirs & executors</Link>
+          <Link href="/app/export" className="hover:text-foreground transition-colors">Export data</Link>
+        </div>
+      </FadeUp>
     </div>
   )
 }

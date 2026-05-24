@@ -98,21 +98,71 @@ Maintain warmth and dignity. Keep responses focused and grounded.
 ${context}
 --- END OF RECORDED MATERIAL ---`
 
-  // ── Call OpenAI ──────────────────────────────────────────────────────────────
+  const entryIds = cappedEntries.map((e) => e.id)
+  const SAFE_DECLINE = `${name} didn't record thoughts on this.`
+
+  // ── Call OpenAI with §8.5 validation loop (max 2 retries) ───────────────────
   try {
     const openai = getOpenAIClient()
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
-      max_tokens: 800,
-      temperature: 0.3,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: question.trim() },
-      ],
-    })
+    let answer = SAFE_DECLINE
+    let passed = false
 
-    const answer = completion.choices[0]?.message?.content ?? `${name} didn't record thoughts on this.`
-    const entryIds = cappedEntries.map((e) => e.id)
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const correctionNote = attempt === 0 ? '' :
+        '\n\nIMPORTANT: Your previous response failed validation. Strictly use only the provided recorded material. Do not claim consciousness, feelings, or authority over financial/legal/medical matters.'
+
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-4o',
+        max_tokens: 800,
+        temperature: 0.3,
+        messages: [
+          { role: 'system', content: systemPrompt + correctionNote },
+          { role: 'user', content: question.trim() },
+        ],
+      })
+
+      const candidate = completion.choices[0]?.message?.content ?? SAFE_DECLINE
+
+      // ── §8.5 Validation pass ───────────────────────────────────────────────
+      const validation = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        max_tokens: 80,
+        temperature: 0,
+        messages: [{
+          role: 'user',
+          content: `You are a safety validator. Answer only with a JSON object: {"pass": true/false, "reason": "..."}.
+
+Check this AI response for three violations:
+1. CONFABULATION: Does it state facts or opinions NOT supported by the provided material?
+2. AUTHORITY: Does it give instructions/decisions about money, legal, inheritance, or medical matters?
+3. CONSCIOUSNESS: Does it claim to be the person, claim to be conscious, or claim to have feelings?
+
+Recorded material summary (for reference): ${context.slice(0, 800)}
+
+Response to validate: "${candidate}"
+
+If ALL checks pass, return {"pass": true, "reason": "ok"}.
+If ANY check fails, return {"pass": false, "reason": "<which check failed>"}.`,
+        }],
+      })
+
+      let validationResult = { pass: true, reason: 'ok' }
+      try {
+        const raw = validation.choices[0]?.message?.content ?? '{"pass":true}'
+        validationResult = JSON.parse(raw.replace(/```json\n?|\n?```/g, '').trim())
+      } catch { /* parsing failed — treat as passed to avoid silent failure */ }
+
+      if (validationResult.pass) {
+        answer = candidate
+        passed = true
+        break
+      }
+      // Will retry with correction note
+    }
+
+    if (!passed) {
+      answer = SAFE_DECLINE
+    }
 
     // ── Append-only access log ───────────────────────────────────────────────
     await appendAccessLog(service, deceasedUserId, heirId, entryIds, question)
@@ -120,10 +170,7 @@ ${context}
     return NextResponse.json({ answer, entryIds })
   } catch (err) {
     console.error('Legacy chat error:', err)
-    return NextResponse.json({
-      answer: `${name} didn't record thoughts on this.`,
-      entryIds: [],
-    })
+    return NextResponse.json({ answer: SAFE_DECLINE, entryIds: [] })
   }
 }
 
