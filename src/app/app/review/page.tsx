@@ -17,7 +17,9 @@ export default async function ReviewPage() {
   if (!user) return null
 
   const { data, error } = await supabase
-    .from('soul_entries').select('*').eq('user_id', user.id)
+    .from('soul_entries')
+    .select('*')
+    .eq('user_id', user.id)
     .order('created_at', { ascending: false })
 
   if (error) return (
@@ -27,6 +29,27 @@ export default async function ReviewPage() {
   )
 
   const entries = (data ?? []) as SoulEntry[]
+
+  // Collect unique prompt IDs so we can fetch their text in two parallel lookups
+  const interviewIds  = [...new Set(entries.map((e) => e.prompt_id).filter(Boolean))] as string[]
+  const dailyIds      = [...new Set(entries.map((e) => e.daily_prompt_id).filter(Boolean))] as string[]
+
+  const [interviewRes, dailyRes] = await Promise.all([
+    interviewIds.length
+      ? supabase.from('interview_prompts').select('id, text').in('id', interviewIds)
+      : { data: [] },
+    dailyIds.length
+      ? supabase.from('daily_prompts').select('id, prompt_text').in('id', dailyIds)
+      : { data: [] },
+  ])
+
+  const interviewMap = Object.fromEntries(
+    (interviewRes.data ?? []).map((r: { id: string; text: string }) => [r.id, r.text])
+  )
+  const dailyMap = Object.fromEntries(
+    (dailyRes.data ?? []).map((r: { id: string; prompt_text: string }) => [r.id, r.prompt_text])
+  )
+
   const byDomain = entries.reduce<Record<string, SoulEntry[]>>((acc, e) => {
     if (!acc[e.domain]) acc[e.domain] = []
     acc[e.domain]!.push(e)
@@ -34,7 +57,7 @@ export default async function ReviewPage() {
   }, {})
   const domains = Object.keys(byDomain) as Domain[]
 
-  const privateCount  = entries.filter((e) => e.sharing_status === 'private').length
+  const privateCount   = entries.filter((e) => e.sharing_status === 'private').length
   const shareableCount = entries.filter((e) => e.sharing_status === 'shareable').length
 
   return (
@@ -46,7 +69,7 @@ export default async function ReviewPage() {
         </p>
         {entries.length > 0 && (
           <p className="text-xs text-muted-foreground">
-            {shareableCount} shareable · {privateCount} private
+            {shareableCount} for heirs · {privateCount} only you
           </p>
         )}
       </FadeUp>
@@ -67,9 +90,15 @@ export default async function ReviewPage() {
               <section className="space-y-3">
                 <p className="text-label">{DOMAIN_LABELS[domain] ?? domain}</p>
                 <div className="space-y-2">
-                  {byDomain[domain]!.map((entry) => (
-                    <EntryCard key={entry.id} entry={entry} />
-                  ))}
+                  {byDomain[domain]!.map((entry) => {
+                    const promptText =
+                      (entry.prompt_id       ? interviewMap[entry.prompt_id]       : null) ??
+                      (entry.daily_prompt_id ? dailyMap[entry.daily_prompt_id]     : null) ??
+                      null
+                    return (
+                      <EntryCard key={entry.id} entry={entry} promptText={promptText} />
+                    )
+                  })}
                 </div>
               </section>
             </StaggerItem>

@@ -3,7 +3,7 @@
 import { useState, useTransition, useRef } from 'react'
 import { motion, AnimatePresence } from '@/components/ui/motion'
 import { updateSharingStatus, updateEntry } from '@/app/actions/entries'
-import type { Database, SharingStatus, Domain } from '@/lib/supabase/types'
+import type { Database, Domain } from '@/lib/supabase/types'
 
 type Entry = Database['public']['Tables']['soul_entries']['Row']
 
@@ -30,9 +30,8 @@ function readingTime(words: number) {
   return `${mins} min`
 }
 
-const COLLAPSE_LINES = 4
 
-export function EntryCard({ entry }: { entry: Entry }) {
+export function EntryCard({ entry, promptText }: { entry: Entry; promptText?: string | null }) {
   const [isPending, startTransition] = useTransition()
   const [expanded, setExpanded]     = useState(false)
   const [isEditing, setIsEditing]   = useState(false)
@@ -153,6 +152,11 @@ export function EntryCard({ entry }: { entry: Entry }) {
             transition={{ duration: 0.18 }}
             className="space-y-2"
           >
+            {promptText && (
+              <p className="text-[11px] text-muted-foreground/60 leading-snug font-light">
+                {promptText}
+              </p>
+            )}
             <p className={`text-sm text-foreground leading-relaxed ${!expanded && isLong ? 'line-clamp-4' : ''}`}>
               {savedContent}
             </p>
@@ -230,13 +234,14 @@ export function EntryCard({ entry }: { entry: Entry }) {
             onClick={toggleShare}
             disabled={isPending}
             aria-pressed={isShareable}
+            title={isShareable ? 'Your heirs can read this entry' : 'Only visible to you — heirs cannot see this'}
             className={`text-[10px] px-2.5 py-1 rounded-full border transition-all duration-200 disabled:opacity-40 ${
               isShareable
                 ? 'border-foreground/25 text-foreground bg-foreground/5'
                 : 'border-border text-muted-foreground hover:border-foreground/20 hover:text-foreground'
             }`}
           >
-            {isPending ? '…' : isShareable ? 'Shareable' : 'Private'}
+            {isPending ? '…' : isShareable ? 'For heirs' : 'Only me'}
           </button>
         </div>
       </div>

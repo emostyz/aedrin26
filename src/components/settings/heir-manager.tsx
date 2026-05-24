@@ -65,19 +65,39 @@ export function HeirManager({ initialHeirs }: Props) {
 
   return (
     <section className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between gap-4">
         <div className="space-y-0.5">
           <p className="text-label">Heirs</p>
           <p className="text-xs text-muted-foreground">
-            Designate who may access your Soul Profile after death, and which domains they may see.
+            People who receive access to your story after your death is verified.
           </p>
         </div>
         <button
           onClick={() => setShowForm((v) => !v)}
-          className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+          className="text-xs text-muted-foreground hover:text-foreground transition-colors shrink-0"
         >
           {showForm ? 'Cancel' : '+ Add heir'}
         </button>
+      </div>
+
+      {/* How it works */}
+      <div className="rounded-lg border border-border/60 bg-surface/40 px-5 py-4 space-y-3">
+        <p className="text-[11px] text-muted-foreground uppercase tracking-wider">How it works</p>
+        <ol className="space-y-2.5">
+          {[
+            { step: '1', text: 'Mark entries "For heirs" in the Review tab — only those entries will ever be visible to anyone you designate.' },
+            { step: '2', text: 'Add heirs here and choose which topics (domains) each person may see. For example, your daughter might see Family and Messages but not Career.' },
+            { step: '3', text: 'Appoint an executor below — someone trusted to verify your death and unlock access for your heirs.' },
+            { step: '4', text: 'Until that verification happens, nothing is shared. Your story stays completely private.' },
+          ].map(({ step, text }) => (
+            <li key={step} className="flex gap-3 text-xs text-muted-foreground leading-relaxed">
+              <span className="shrink-0 w-4 h-4 rounded-full border border-border/60 flex items-center justify-center text-[9px] text-muted-foreground/60 font-medium mt-px">
+                {step}
+              </span>
+              <span>{text}</span>
+            </li>
+          ))}
+        </ol>
       </div>
 
       <AnimatePresence>
@@ -144,7 +164,12 @@ export function HeirManager({ initialHeirs }: Props) {
                 </div>
 
                 <div className="space-y-2">
-                  <p className="text-[11px] text-muted-foreground uppercase tracking-wider">Domains</p>
+                  <p className="text-[11px] text-muted-foreground uppercase tracking-wider">
+                    Topics they can see
+                  </p>
+                  <p className="text-[11px] text-muted-foreground/60">
+                    Only entries marked &quot;For heirs&quot; in the selected topics will be visible.
+                  </p>
                   <div className="flex flex-wrap gap-2">
                     {ALL_DOMAINS.map((domain) => {
                       const allowed = heir.permissions[domain]

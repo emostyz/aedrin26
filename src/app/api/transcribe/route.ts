@@ -29,10 +29,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Recording too large (max 10 MB).' }, { status: 413 })
   }
 
-  // Accept any common audio MIME type — Whisper is flexible
-  const baseType = audio.type.split(';')[0].trim()
   if (audio.size === 0) {
     return NextResponse.json({ error: 'Empty recording.' }, { status: 400 })
+  }
+
+  // Validate MIME type against allowlist (strip codec params for comparison)
+  const baseType = audio.type.split(';')[0].trim()
+  if (!ALLOWED_AUDIO_TYPES.has(baseType) && !ALLOWED_AUDIO_TYPES.has(audio.type)) {
+    return NextResponse.json({ error: 'Unsupported audio format.' }, { status: 415 })
   }
 
   try {

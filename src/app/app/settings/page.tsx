@@ -45,8 +45,8 @@ export default async function SettingsPage() {
         <p className="text-[1.75rem] font-light tracking-[-0.03em] text-foreground leading-tight">
           Who holds the keys.
         </p>
-        <p className="text-sm text-muted-foreground">
-          Designate heirs to receive your Soul Profile and executors to initiate the verification process.
+        <p className="text-sm text-muted-foreground leading-relaxed max-w-md">
+          Choose who receives your story after you pass — and exactly what they can read. Nothing is shared while you&apos;re alive.
         </p>
       </FadeUp>
 

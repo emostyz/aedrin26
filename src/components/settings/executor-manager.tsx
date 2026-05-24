@@ -39,20 +39,23 @@ export function ExecutorManager({ initialExecutors }: Props) {
 
   return (
     <section className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between gap-4">
         <div className="space-y-0.5">
           <p className="text-label">Executors</p>
           <p className="text-xs text-muted-foreground">
-            Executors may initiate the death verification process. Share AEDRIN with them so they know their role.
+            A trusted person who notifies AEDRIN when you pass — triggering your heirs&apos; access.
           </p>
         </div>
         <button
           onClick={() => setShowForm((v) => !v)}
-          className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+          className="text-xs text-muted-foreground hover:text-foreground transition-colors shrink-0"
         >
           {showForm ? 'Cancel' : '+ Add executor'}
         </button>
       </div>
+      <p className="text-xs text-muted-foreground/60 leading-relaxed">
+        This is typically a spouse, close friend, or solicitor — someone who will know to act. Let them know they&apos;re listed here and what it means.
+      </p>
 
       <AnimatePresence>
         {showForm && (
