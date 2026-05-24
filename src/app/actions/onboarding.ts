@@ -2,7 +2,6 @@
 
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { getOrCreateTodaysPrompt } from './daily-prompt'
 
 export async function completeOnboarding(formData: FormData): Promise<{ error?: string }> {
   const supabase = await createClient()
@@ -30,9 +29,6 @@ export async function completeOnboarding(formData: FormData): Promise<{ error?: 
 
   if (error) return { error: error.message }
 
-  // Kick off first daily prompt generation in the background
-  // (fire-and-forget; user is redirected immediately)
-  getOrCreateTodaysPrompt().catch(() => {})
-
+  // Dashboard will generate today's prompt on arrival — no need for fire-and-forget here.
   redirect('/app/dashboard')
 }

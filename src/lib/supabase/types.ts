@@ -58,6 +58,27 @@ export interface Database {
         }
         Update: Partial<Database['public']['Tables']['users']['Insert']>
       }
+      daily_insights: {
+        Row: {
+          id: string
+          user_id: string
+          insight_text: string
+          recommendation: string | null
+          pattern_sources: string[]
+          delivered_date: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          insight_text: string
+          recommendation?: string | null
+          pattern_sources?: string[]
+          delivered_date: string
+          created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['daily_insights']['Insert']>
+      }
       daily_prompts: {
         Row: {
           id: string

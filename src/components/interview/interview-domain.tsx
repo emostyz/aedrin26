@@ -1,10 +1,11 @@
 'use client'
 
-import { useState, useRef, useTransition, useEffect, useCallback } from 'react'
+import { useState, useRef, useTransition } from 'react'
 import Link from 'next/link'
 import { saveEntry } from '@/app/actions/entries'
 import { suggestFollowUps } from '@/app/actions/ai'
 import { motion, AnimatePresence, Stagger, StaggerItem } from '@/components/ui/motion'
+import { SoundwaveRecorder } from '@/components/ui/soundwave-recorder'
 import type { Domain, Database, FollowUpQuestion } from '@/lib/supabase/types'
 
 type Prompt = Database['public']['Tables']['interview_prompts']['Row']
@@ -17,41 +18,6 @@ interface Props {
   existingEntries: Entry[]
   dailyPrompt?: { id: string; prompt_text: string } | null
 }
-
-declare global {
-  interface Window {
-    SpeechRecognition: new () => SpeechRecognition
-    webkitSpeechRecognition: new () => SpeechRecognition
-  }
-}
-
-type SpeechRecognition = EventTarget & {
-  continuous: boolean
-  interimResults: boolean
-  lang: string
-  start(): void
-  stop(): void
-  onresult: ((e: SpeechRecognitionEvent) => void) | null
-  onend: (() => void) | null
-  onerror: ((e: Event) => void) | null
-}
-
-type SpeechRecognitionEvent = Event & {
-  results: SpeechRecognitionResultList
-}
-
-type SpeechRecognitionResultList = {
-  length: number
-  item(index: number): SpeechRecognitionResult
-  [index: number]: SpeechRecognitionResult
-}
-
-type SpeechRecognitionResult = {
-  isFinal: boolean
-  [index: number]: SpeechRecognitionAlternative
-}
-
-type SpeechRecognitionAlternative = { transcript: string }
 
 // ── Follow-up Question UI ──────────────────────────────────────────────────────
 
@@ -199,18 +165,10 @@ export function InterviewDomain({ domain, label, prompts, existingEntries, daily
   const [savedBrief, setSavedBrief]         = useState(false)
   const [followUps, setFollowUps]           = useState<FollowUpQuestion[]>([])
   const [loadingFollowUps, setLoadingFollowUps] = useState(false)
-  const [isListening, setIsListening]       = useState(false)
-  const [voiceSupported, setVoiceSupported] = useState(false)
   const [uploadedFile, setUploadedFile]     = useState<{ name: string; url: string } | null>(null)
   const [uploading, setUploading]           = useState(false)
   const [isPending, startTransition]        = useTransition()
-  const recognitionRef                      = useRef<SpeechRecognition | null>(null)
   const fileInputRef                        = useRef<HTMLInputElement>(null)
-
-  useEffect(() => {
-    const SR = window.SpeechRecognition ?? window.webkitSpeechRecognition
-    setVoiceSupported(!!SR)
-  }, [])
 
   const currentPrompt = effectivePrompts[promptIndex] ?? null
   const hasNext = promptIndex < effectivePrompts.length - 1
@@ -225,33 +183,6 @@ export function InterviewDomain({ domain, label, prompts, existingEntries, daily
     setSavedBrief(false)
     setError(null)
     setUploadedFile(null)
-  }
-
-  function startListening() {
-    const SR = window.SpeechRecognition ?? window.webkitSpeechRecognition
-    if (!SR) return
-    const rec = new SR()
-    rec.continuous = true
-    rec.interimResults = true
-    rec.lang = 'en-US'
-    recognitionRef.current = rec
-
-    rec.onresult = (e: SpeechRecognitionEvent) => {
-      let transcript = ''
-      for (let i = 0; i < e.results.length; i++) {
-        transcript += e.results[i][0].transcript
-      }
-      setContent(transcript)
-    }
-    rec.onend = () => setIsListening(false)
-    rec.onerror = () => setIsListening(false)
-    rec.start()
-    setIsListening(true)
-  }
-
-  function stopListening() {
-    recognitionRef.current?.stop()
-    setIsListening(false)
   }
 
   async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -365,7 +296,7 @@ export function InterviewDomain({ domain, label, prompts, existingEntries, daily
             <textarea
               value={content}
               onChange={(e) => { setContent(e.target.value); setSavedBrief(false) }}
-              placeholder={isListening ? 'Listening…' : 'Write your response…'}
+              placeholder="Write your response…"
               rows={6}
               aria-label="Your response"
               className="w-full bg-input border border-border rounded-lg px-4 py-3.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-none transition-all"
@@ -425,18 +356,11 @@ export function InterviewDomain({ domain, label, prompts, existingEntries, daily
                 ) : 'Deepen →'}
               </button>
 
-              {voiceSupported && (
-                <button
-                  onClick={isListening ? stopListening : startListening}
-                  className={`rounded-md px-4 py-2 text-xs border transition-colors ${
-                    isListening
-                      ? 'border-foreground/30 text-foreground bg-muted'
-                      : 'border-border text-muted-foreground hover:text-foreground hover:border-foreground/20'
-                  }`}
-                >
-                  {isListening ? '⏹ Stop' : '⏺ Voice'}
-                </button>
-              )}
+              <SoundwaveRecorder
+                onTranscript={(t) => { setContent(t); setSavedBrief(false) }}
+                disabled={isPending}
+                canvasHeight={36}
+              />
 
               <button
                 onClick={() => fileInputRef.current?.click()}

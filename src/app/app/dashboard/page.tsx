@@ -3,7 +3,9 @@ import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { FadeUp, Stagger, StaggerItem } from '@/components/ui/motion'
 import { TodayPrompt } from '@/components/dashboard/today-prompt'
+import { DailyInsight } from '@/components/dashboard/daily-insight'
 import { getOrCreateTodaysPrompt } from '@/app/actions/daily-prompt'
+import { getOrCreateTodaysInsight } from '@/app/actions/daily-insight'
 import type { Domain } from '@/lib/supabase/types'
 
 const DOMAINS: { domain: Domain; label: string }[] = [
@@ -23,18 +25,20 @@ export default async function DashboardPage() {
 
   const service = createServiceClient()
 
-  // Run all data fetches in parallel, including today's daily prompt generation
-  const [entriesResult, profileResult, legacyResult, todayPromptResult] = await Promise.all([
+  // Run all data fetches in parallel, including AI generation for today's prompt + insight
+  const [entriesResult, profileResult, legacyResult, todayPromptResult, todayInsightResult] = await Promise.all([
     supabase.from('soul_entries').select('id, domain').eq('user_id', user.id),
     supabase.from('users').select('account_state, legal_name, display_name').eq('id', user.id).single(),
     service.from('heirs').select('id, user_id').eq('email', user.email!.toLowerCase()).eq('access_status', 'active'),
     getOrCreateTodaysPrompt(),
+    getOrCreateTodaysInsight(),
   ])
 
   const entries = (entriesResult.data ?? []) as { id: string; domain: Domain }[]
   const profile = profileResult.data as { account_state: string; legal_name: string; display_name: string | null } | null
   const legacyHeirs = (legacyResult.data ?? []) as { id: string; user_id: string }[]
   const todayPrompt = todayPromptResult.prompt
+  const todayInsight = todayInsightResult.insight
 
   const countByDomain = entries.reduce<Record<string, number>>((acc, e) => {
     acc[e.domain] = (acc[e.domain] ?? 0) + 1
@@ -126,6 +130,17 @@ export default async function DashboardPage() {
             </div>
           )}
         </FadeUp>
+
+        {/* Daily insight — only surfaces when there's enough entry data */}
+        {todayInsight && (
+          <FadeUp delay={0.12}>
+            <DailyInsight
+              insightText={todayInsight.insight_text}
+              recommendation={todayInsight.recommendation}
+              patternSources={todayInsight.pattern_sources}
+            />
+          </FadeUp>
+        )}
       </div>
 
       {/* Soul Profile */}
