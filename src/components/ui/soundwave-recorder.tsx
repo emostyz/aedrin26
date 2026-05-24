@@ -2,8 +2,13 @@
 
 /**
  * SoundwaveRecorder
- * Canvas-based real-time audio visualiser + Web Speech API transcript.
- * Zero React re-renders during recording — all animation is done directly on a <canvas>.
+ * Records audio via MediaRecorder, visualises the waveform on a canvas,
+ * then transcribes the recording via OpenAI Whisper (/api/transcribe).
+ *
+ * Why not Web Speech API?
+ *  – Chrome-only; silent failures in Safari/Firefox; requires Google's cloud
+ *    even for on-device hardware; no way to detect when it's unavailable.
+ * Whisper works in every browser that supports MediaRecorder (all modern browsers).
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react'
@@ -18,41 +23,11 @@ export interface SoundwaveRecorderProps {
 }
 
 const BAR_COUNT = 36
-const BAR_W     = 2   // px per bar
-const BAR_GAP   = 2   // px between bars
-const CANVAS_W  = BAR_COUNT * (BAR_W + BAR_GAP) - BAR_GAP  // 142
+const BAR_W     = 2
+const BAR_GAP   = 2
+const CANVAS_W  = BAR_COUNT * (BAR_W + BAR_GAP) - BAR_GAP  // 142 px
 
-declare global {
-  interface Window {
-    SpeechRecognition: new () => SpeechRecognitionInstance
-    webkitSpeechRecognition: new () => SpeechRecognitionInstance
-  }
-}
-
-interface SpeechRecognitionInstance extends EventTarget {
-  continuous: boolean
-  interimResults: boolean
-  lang: string
-  start(): void
-  stop(): void
-  onresult: ((e: SpeechRecognitionEvent) => void) | null
-  onend:    (() => void) | null
-  onerror:  ((e: Event) => void) | null
-}
-
-interface SpeechRecognitionEvent extends Event {
-  results: SpeechRecognitionResultList
-}
-
-interface SpeechRecognitionResultList {
-  length: number
-  [index: number]: SpeechRecognitionResult
-}
-
-interface SpeechRecognitionResult {
-  isFinal: boolean
-  [index: number]: { transcript: string }
-}
+type RecorderState = 'idle' | 'recording' | 'processing'
 
 export function SoundwaveRecorder({
   onTranscript,
@@ -60,32 +35,34 @@ export function SoundwaveRecorder({
   className,
   canvasHeight = 40,
 }: SoundwaveRecorderProps) {
-  const [isRecording, setIsRecording] = useState(false)
-  const [supported, setSupported]     = useState(false)
+  const [state, setState]         = useState<RecorderState>('idle')
+  const [error, setError]         = useState<string | null>(null)
+  const [supported, setSupported] = useState(false)
 
   const canvasRef    = useRef<HTMLCanvasElement>(null)
   const rafRef       = useRef<number>(0)
   const analyserRef  = useRef<AnalyserNode | null>(null)
   const audioCtxRef  = useRef<AudioContext | null>(null)
   const streamRef    = useRef<MediaStream | null>(null)
-  const recRef       = useRef<SpeechRecognitionInstance | null>(null)
-  const activeRef    = useRef(false)   // tracks live recording state for onend restart
+  const recRef       = useRef<MediaRecorder | null>(null)
+  const chunksRef    = useRef<BlobPart[]>([])
 
+  // Support check — any browser with MediaRecorder + getUserMedia works
   useEffect(() => {
-    const hasSR  = typeof window !== 'undefined' &&
-                   !!(window.SpeechRecognition ?? window.webkitSpeechRecognition)
-    const hasMic = typeof navigator !== 'undefined' &&
-                   !!navigator.mediaDevices?.getUserMedia
-    setSupported(hasSR && hasMic)
+    setSupported(
+      typeof window !== 'undefined' &&
+      !!window.MediaRecorder &&
+      !!navigator.mediaDevices?.getUserMedia
+    )
   }, [])
 
-  // ── Draw loop ──────────────────────────────────────────────────────────────
+  // ── Waveform draw loop ─────────────────────────────────────────────────────
   const drawFrame = useCallback(() => {
     const canvas   = canvasRef.current
     const analyser = analyserRef.current
     if (!canvas || !analyser) return
 
-    const ctx  = canvas.getContext('2d')
+    const ctx = canvas.getContext('2d')
     if (!ctx) return
 
     const dpr  = window.devicePixelRatio || 1
@@ -93,25 +70,18 @@ export function SoundwaveRecorder({
     analyser.getByteFrequencyData(data)
 
     ctx.clearRect(0, 0, canvas.width, canvas.height)
-
-    // Get foreground colour from the canvas element (set via text-foreground class)
-    const color = getComputedStyle(canvas).color || '#fff'
-    ctx.fillStyle = color
+    ctx.fillStyle = getComputedStyle(canvas).color || '#fff'
 
     const midY = canvas.height / 2 / dpr
 
     for (let i = 0; i < BAR_COUNT; i++) {
-      const amp    = data[i] / 255
-      // minimum 4 px, with a gentle idle sine to show it's alive
-      const base   = 4
-      const maxAdd = canvasHeight - base - 4
-      const barH   = base + amp * maxAdd
-
-      const x = i * (BAR_W + BAR_GAP)
-      const y = midY - barH / 2
+      const amp  = data[i] / 255
+      const base = 4
+      const barH = base + amp * (canvasHeight - base - 4)
+      const x    = i * (BAR_W + BAR_GAP)
+      const y    = midY - barH / 2
 
       ctx.beginPath()
-      // roundRect might not exist on older Safari — fall back to fillRect
       if (ctx.roundRect) {
         ctx.roundRect(x, y, BAR_W, barH, 1)
       } else {
@@ -123,25 +93,28 @@ export function SoundwaveRecorder({
     rafRef.current = requestAnimationFrame(drawFrame)
   }, [canvasHeight])
 
-  // ── Start ──────────────────────────────────────────────────────────────────
+  // ── Start recording ────────────────────────────────────────────────────────
   async function start() {
-    if (disabled) return
+    if (disabled || state !== 'idle') return
+    setError(null)
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
       streamRef.current = stream
 
+      // Audio analyser for the waveform visualisation
       const AudioCtx =
-        window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
-      const audioCtx  = new AudioCtx()
+        window.AudioContext ??
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+      const audioCtx = new AudioCtx()
       audioCtxRef.current = audioCtx
 
       const analyser = audioCtx.createAnalyser()
-      analyser.fftSize                = 128    // 64 frequency bins
-      analyser.smoothingTimeConstant  = 0.82   // smooth but responsive
+      analyser.fftSize               = 128
+      analyser.smoothingTimeConstant = 0.82
       analyserRef.current = analyser
 
-      const source = audioCtx.createMediaStreamSource(stream)
-      source.connect(analyser)
+      audioCtx.createMediaStreamSource(stream).connect(analyser)
 
       // Scale canvas for hi-DPI
       const canvas = canvasRef.current!
@@ -150,64 +123,80 @@ export function SoundwaveRecorder({
       canvas.height = canvasHeight * dpr
       canvas.getContext('2d')!.scale(dpr, dpr)
 
-      activeRef.current = true
-      setIsRecording(true)
+      // Pick the best supported MIME type for MediaRecorder
+      const mimeType = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4']
+        .find((m) => MediaRecorder.isTypeSupported(m)) ?? ''
+
+      chunksRef.current = []
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined)
+      recRef.current = recorder
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunksRef.current.push(e.data)
+      }
+
+      recorder.onstop = async () => {
+        const mimeUsed = recorder.mimeType || 'audio/webm'
+        const blob = new Blob(chunksRef.current, { type: mimeUsed })
+        chunksRef.current = []
+
+        cancelAnimationFrame(rafRef.current)
+        const canvas = canvasRef.current
+        if (canvas) canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height)
+
+        streamRef.current?.getTracks().forEach((t) => t.stop())
+        audioCtxRef.current?.close().catch(() => {})
+        analyserRef.current = null
+
+        if (blob.size < 1000) {
+          // Probably silence or an instantly-stopped recording
+          setState('idle')
+          return
+        }
+
+        setState('processing')
+
+        try {
+          const fd = new FormData()
+          fd.append('audio', blob, `recording.${mimeUsed.includes('ogg') ? 'ogg' : mimeUsed.includes('mp4') ? 'mp4' : 'webm'}`)
+
+          const res = await fetch('/api/transcribe', { method: 'POST', body: fd })
+          const json = await res.json()
+
+          if (json.error) {
+            setError(json.error)
+          } else if (json.transcript?.trim()) {
+            onTranscript(json.transcript.trim())
+          }
+        } catch {
+          setError('Could not reach transcription service.')
+        } finally {
+          setState('idle')
+        }
+      }
+
+      recorder.start()
+      setState('recording')
       rafRef.current = requestAnimationFrame(drawFrame)
-
-      // Speech recognition
-      const SR = window.SpeechRecognition ?? window.webkitSpeechRecognition
-      const rec = new SR()
-      rec.continuous     = true
-      rec.interimResults = true
-      rec.lang           = 'en-US'
-      recRef.current     = rec
-
-      rec.onresult = (e: SpeechRecognitionEvent) => {
-        let t = ''
-        for (let i = 0; i < e.results.length; i++) {
-          t += e.results[i][0].transcript
-        }
-        onTranscript(t)
-      }
-
-      // Auto-restart on end while still "active"
-      rec.onend = () => {
-        if (activeRef.current) {
-          try { rec.start() } catch { /* already stopped */ }
-        }
-      }
-
-      rec.start()
     } catch (err) {
-      console.error('[SoundwaveRecorder] Cannot access microphone:', err)
-      activeRef.current = false
-      setIsRecording(false)
+      console.error('[SoundwaveRecorder] Mic access error:', err)
+      setError('Microphone access was denied.')
+      setState('idle')
     }
   }
 
-  // ── Stop ───────────────────────────────────────────────────────────────────
+  // ── Stop recording ─────────────────────────────────────────────────────────
   function stop() {
-    activeRef.current = false
-    cancelAnimationFrame(rafRef.current)
+    if (state !== 'recording') return
     recRef.current?.stop()
-    streamRef.current?.getTracks().forEach((t) => t.stop())
-    audioCtxRef.current?.close().catch(() => {})
-    analyserRef.current = null
-
-    // Clear canvas
-    const canvas = canvasRef.current
-    if (canvas) {
-      canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height)
-    }
-
-    setIsRecording(false)
+    // onstop handles the rest
   }
 
   // ── Cleanup on unmount ─────────────────────────────────────────────────────
   useEffect(() => {
     return () => {
-      activeRef.current = false
       cancelAnimationFrame(rafRef.current)
+      recRef.current?.stop()
       streamRef.current?.getTracks().forEach((t) => t.stop())
       audioCtxRef.current?.close().catch(() => {})
     }
@@ -215,21 +204,33 @@ export function SoundwaveRecorder({
 
   if (!supported) return null
 
+  const isRecording   = state === 'recording'
+  const isProcessing  = state === 'processing'
+
   return (
     <div className={`flex items-center gap-3 ${className ?? ''}`}>
-      {/* Mic / stop button */}
+      {/* Mic / stop / spinner button */}
       <button
         type="button"
         onClick={isRecording ? stop : start}
-        disabled={disabled}
-        aria-label={isRecording ? 'Stop recording' : 'Record voice response'}
+        disabled={disabled || isProcessing}
+        aria-label={isRecording ? 'Stop recording' : isProcessing ? 'Processing…' : 'Record voice response'}
         className={`relative w-8 h-8 rounded-full flex items-center justify-center border shrink-0 transition-all duration-300 ${
           isRecording
             ? 'border-foreground bg-foreground text-background'
-            : 'border-border text-muted-foreground hover:border-foreground/30 hover:text-foreground'
+            : isProcessing
+              ? 'border-border text-muted-foreground opacity-60'
+              : 'border-border text-muted-foreground hover:border-foreground/30 hover:text-foreground'
         } disabled:opacity-30`}
       >
-        {isRecording ? (
+        {isProcessing ? (
+          /* Spinner while Whisper processes */
+          <motion.span
+            className="w-3 h-3 border border-current border-t-transparent rounded-full"
+            animate={{ rotate: 360 }}
+            transition={{ repeat: Infinity, duration: 0.8, ease: 'linear' }}
+          />
+        ) : isRecording ? (
           /* Pulsing ring + stop square */
           <>
             <motion.span
@@ -252,7 +253,7 @@ export function SoundwaveRecorder({
         )}
       </button>
 
-      {/* Waveform canvas */}
+      {/* Waveform canvas (recording only) */}
       <AnimatePresence>
         {isRecording && (
           <motion.div
@@ -272,16 +273,39 @@ export function SoundwaveRecorder({
         )}
       </AnimatePresence>
 
-      {/* "Listening" label */}
-      <AnimatePresence>
+      {/* Status label */}
+      <AnimatePresence mode="wait">
         {isRecording && (
           <motion.span
+            key="listening"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="text-[10px] text-muted-foreground tracking-wider"
           >
             Listening…
+          </motion.span>
+        )}
+        {isProcessing && (
+          <motion.span
+            key="processing"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="text-[10px] text-muted-foreground tracking-wider"
+          >
+            Transcribing…
+          </motion.span>
+        )}
+        {error && (
+          <motion.span
+            key="error"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="text-[10px] text-destructive"
+          >
+            {error}
           </motion.span>
         )}
       </AnimatePresence>

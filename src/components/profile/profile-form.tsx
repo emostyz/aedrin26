@@ -24,9 +24,15 @@ export function ProfileForm({ legalName, displayName, dob, photoUrl }: Props) {
     setUploadError(null)
     setUploading(true)
     try {
-      const fd = new FormData()
-      fd.append('file', file)
-      const res = await fetch('/api/profile/photo', { method: 'POST', body: fd })
+      // Send raw binary body — avoids multipart/FormData parsing issues in dev
+      const res = await fetch('/api/profile/photo', {
+        method: 'POST',
+        headers: {
+          'Content-Type': file.type,
+          'Content-Length': String(file.size),
+        },
+        body: file,
+      })
       const json = await res.json()
       if (json.error) { setUploadError(json.error); return }
       setPhoto(json.url)

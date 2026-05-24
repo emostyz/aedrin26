@@ -1,6 +1,6 @@
 'use client'
 
-import { useActionState, useState } from 'react'
+import { useActionState, useState, useEffect } from 'react'
 import Link from 'next/link'
 import { login } from '@/app/actions/auth'
 import { createClient } from '@/lib/supabase/client'
@@ -14,8 +14,11 @@ const QUOTES = [
   { text: 'Your story is the greatest legacy that you will leave to your friends.', author: 'Steve Saint' },
 ]
 
-// Day-of-month index: same value on server and client, rotates daily
-const QUOTE = QUOTES[new Date().getDate() % QUOTES.length]!
+// SSR renders index 0; client replaces it with the day-keyed quote after hydration.
+// suppressHydrationWarning on the element suppresses the inevitable mismatch warning
+// because the quote panel is decorative and the flash is invisible (the panel is hidden
+// on mobile, and on desktop it's beneath a Framer Motion fade-in).
+const SSR_QUOTE = QUOTES[0]!
 
 function GoogleButton() {
   const [error, setError] = useState<string | null>(null)
@@ -52,6 +55,13 @@ function GoogleButton() {
 
 export default function LoginPage() {
   const [state, action, pending] = useActionState(login, undefined)
+  const [quote, setQuote] = useState(SSR_QUOTE)
+
+  // Pick the day-keyed quote on the client only, after hydration.
+  // The panel has a 0.8s fade-in so any initial mismatch is invisible.
+  useEffect(() => {
+    setQuote(QUOTES[new Date().getDate() % QUOTES.length]!)
+  }, [])
 
   return (
     <div className="min-h-dvh flex">
@@ -65,16 +75,18 @@ export default function LoginPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, ease: [0.25, 0.1, 0.25, 1] }}
             className="text-[1.05rem] font-light text-foreground/70 leading-relaxed tracking-[-0.01em]"
+            suppressHydrationWarning
           >
-            &ldquo;{QUOTE.text}&rdquo;
+            &ldquo;{quote.text}&rdquo;
           </motion.blockquote>
           <motion.p
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.8, delay: 0.2 }}
             className="text-xs text-muted-foreground"
+            suppressHydrationWarning
           >
-            — {QUOTE.author}
+            — {quote.author}
           </motion.p>
         </div>
 

@@ -6,10 +6,8 @@ const ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
 const MAX_SIZE = 5 * 1024 * 1024 // 5 MB
 
 /** Verify the file actually matches the declared image type via magic bytes. */
-async function verifyImageMagicBytes(file: File): Promise<boolean> {
-  const bytes = new Uint8Array(await file.slice(0, 12).arrayBuffer())
-
-  switch (file.type) {
+function verifyImageMagicBytes(bytes: Uint8Array, mimeType: string): boolean {
+  switch (mimeType) {
     case 'image/jpeg':
       return bytes[0] === 0xFF && bytes[1] === 0xD8 && bytes[2] === 0xFF
 
@@ -33,15 +31,38 @@ export async function POST(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const formData = await request.formData()
-  const file = formData.get('file') as File | null
-  if (!file)                           return NextResponse.json({ error: 'No file provided' }, { status: 400 })
-  if (file.size > MAX_SIZE)            return NextResponse.json({ error: 'File too large (max 5 MB)' }, { status: 413 })
-  if (!ALLOWED_TYPES.has(file.type))   return NextResponse.json({ error: 'Invalid file type. Use JPEG, PNG, or WebP.' }, { status: 415 })
+  // File is sent as raw binary body; Content-Type header carries the MIME type.
+  // This avoids multipart/FormData parsing which is unreliable in dev under Turbopack.
+  const mimeType = (request.headers.get('content-type') ?? '').split(';')[0].trim()
+  const contentLength = Number(request.headers.get('content-length') ?? '0')
+
+  if (!ALLOWED_TYPES.has(mimeType)) {
+    return NextResponse.json(
+      { error: 'Invalid file type. Use JPEG, PNG, or WebP.' },
+      { status: 415 },
+    )
+  }
+
+  if (contentLength > MAX_SIZE) {
+    return NextResponse.json(
+      { error: 'File too large (max 5 MB).' },
+      { status: 413 },
+    )
+  }
+
+  const arrayBuffer = await request.arrayBuffer()
+
+  if (arrayBuffer.byteLength === 0) {
+    return NextResponse.json({ error: 'Empty file.' }, { status: 400 })
+  }
+
+  if (arrayBuffer.byteLength > MAX_SIZE) {
+    return NextResponse.json({ error: 'File too large (max 5 MB).' }, { status: 413 })
+  }
 
   // Magic-byte check: reject if actual bytes don't match the declared type
-  const magicOk = await verifyImageMagicBytes(file)
-  if (!magicOk) {
+  const bytes = new Uint8Array(arrayBuffer.slice(0, 12))
+  if (!verifyImageMagicBytes(bytes, mimeType)) {
     return NextResponse.json(
       { error: 'File content does not match its declared type.' },
       { status: 422 },
@@ -50,12 +71,13 @@ export async function POST(request: NextRequest) {
 
   const service = createServiceClient()
   // Derive extension from MIME, never from the filename (prevents extension smuggling)
-  const ext  = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' }[file.type]!
+  const ext  = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' }[mimeType]!
   const path = `${user.id}/avatar.${ext}`
+  const buffer = Buffer.from(arrayBuffer)
 
   const { error: uploadError } = await service.storage
     .from('avatars')
-    .upload(path, file, { contentType: file.type, upsert: true })
+    .upload(path, buffer, { contentType: mimeType, upsert: true })
 
   if (uploadError) return NextResponse.json({ error: uploadError.message }, { status: 500 })
 

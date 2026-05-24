@@ -56,6 +56,32 @@ export async function getEntriesForDomain(domain: Domain) {
   return data ?? []
 }
 
+export async function updateEntry(entryId: string, content: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Not authenticated.' }
+
+  if (!content?.trim()) return { error: 'Content is required.' }
+
+  const MAX_CONTENT = 50_000
+  if (content.trim().length > MAX_CONTENT) {
+    return { error: `Entry is too long (max ${MAX_CONTENT.toLocaleString()} characters).` }
+  }
+
+  const { error } = await supabase
+    .from('soul_entries')
+    .update({ content: content.trim() })
+    .eq('id', entryId)
+    .eq('user_id', user.id)
+
+  if (error) return { error: error.message }
+
+  revalidatePath('/app/review')
+  revalidatePath('/app/dashboard')
+
+  return { success: true }
+}
+
 export async function updateSharingStatus(entryId: string, status: SharingStatus) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
