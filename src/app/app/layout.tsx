@@ -1,25 +1,39 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
+import { ensureUserProfile } from '@/lib/supabase/ensure-profile'
 import { logout } from '@/app/actions/auth'
 import { NavClient } from '@/components/nav-client'
+
+type Profile = {
+  legal_name: string
+  display_name: string | null
+  onboarding_complete: boolean
+}
+
+const PROFILE_COLUMNS = 'legal_name, display_name, onboarding_complete'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { data: profileData } = await supabase
+  let { data: profile } = await supabase
     .from('users')
-    .select('legal_name, display_name, onboarding_complete')
+    .select(PROFILE_COLUMNS)
     .eq('id', user.id)
-    .single()
+    .maybeSingle<Profile>()
 
-  const profile = profileData as {
-    legal_name: string
-    display_name: string | null
-    onboarding_complete: boolean
-  } | null
+  // No row yet (trigger gap / pre-trigger account) — create it, then re-read.
+  if (!profile) {
+    await ensureUserProfile(user)
+    const retry = await supabase
+      .from('users')
+      .select(PROFILE_COLUMNS)
+      .eq('id', user.id)
+      .maybeSingle<Profile>()
+    profile = retry.data
+  }
 
   // Redirect to onboarding if intake not yet completed.
   // The /onboarding route lives outside this layout, so no loop risk.
