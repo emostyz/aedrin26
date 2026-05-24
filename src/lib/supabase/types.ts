@@ -141,6 +141,7 @@ export interface Database {
           user_id: string
           domain: Domain
           prompt_id: string | null
+          daily_prompt_id: string | null
           content: string
           media_url: string | null
           sharing_status: SharingStatus
@@ -154,6 +155,7 @@ export interface Database {
           user_id: string
           domain: Domain
           prompt_id?: string | null
+          daily_prompt_id?: string | null
           content: string
           media_url?: string | null
           sharing_status?: SharingStatus

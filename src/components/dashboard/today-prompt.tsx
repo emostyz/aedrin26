@@ -168,7 +168,9 @@ export function TodayPrompt({ promptId, promptText, domain }: TodayPromptProps) 
     const fd = new FormData()
     fd.set('domain', domain)
     fd.set('content', text)
-    fd.set('prompt_id', promptId)
+    // Use daily_prompt_id (not prompt_id) — daily prompts live in a separate
+    // table from interview_prompts; mixing them triggers a FK constraint error.
+    fd.set('daily_prompt_id', promptId)
 
     startT(async () => {
       const result = await saveEntry(fd)
@@ -195,7 +197,7 @@ export function TodayPrompt({ promptId, promptText, domain }: TodayPromptProps) 
     const fd = new FormData()
     fd.set('domain', domain)
     fd.set('content', text)
-    fd.set('prompt_id', promptId)
+    fd.set('daily_prompt_id', promptId)
     startT(async () => {
       await saveEntry(fd)
       setFollowUps((prev) => prev.filter((_, j) => j !== i))
