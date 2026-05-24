@@ -51,6 +51,11 @@ export interface Database {
           account_state: AccountState
           relationship_status: RelationshipStatus | null
           location: string | null
+          company: string | null
+          job_title: string | null
+          job_happiness: string | null
+          career_goals: string | null
+          family_description: string | null
           life_description: string | null
           biggest_regret: string | null
           life_purpose: string | null
@@ -68,6 +73,11 @@ export interface Database {
           account_state?: AccountState
           relationship_status?: RelationshipStatus | null
           location?: string | null
+          company?: string | null
+          job_title?: string | null
+          job_happiness?: string | null
+          career_goals?: string | null
+          family_description?: string | null
           life_description?: string | null
           biggest_regret?: string | null
           life_purpose?: string | null

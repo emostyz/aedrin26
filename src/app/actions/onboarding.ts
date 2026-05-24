@@ -17,6 +17,11 @@ export async function completeOnboarding(formData: FormData): Promise<{ error?: 
 
   const relationship_status = (formData.get('relationship_status') as string) || null
   const location            = clamp((formData.get('location') as string)?.trim() || null)
+  const company             = clamp((formData.get('company') as string)?.trim() || null)
+  const job_title           = clamp((formData.get('job_title') as string)?.trim() || null)
+  const job_happiness       = clamp((formData.get('job_happiness') as string)?.trim() || null)
+  const career_goals        = clamp((formData.get('career_goals') as string)?.trim() || null)
+  const family_description  = clamp((formData.get('family_description') as string)?.trim() || null)
   const life_description    = clamp((formData.get('life_description') as string)?.trim() || null)
   const biggest_regret      = clamp((formData.get('biggest_regret') as string)?.trim() || null)
   const life_purpose        = clamp((formData.get('life_purpose') as string)?.trim() || null)
@@ -26,6 +31,7 @@ export async function completeOnboarding(formData: FormData): Promise<{ error?: 
     .update({
       relationship_status,
       location,
+      company, job_title, job_happiness, career_goals, family_description,
       life_description,
       biggest_regret,
       life_purpose,
@@ -41,6 +47,9 @@ export async function completeOnboarding(formData: FormData): Promise<{ error?: 
   // expand, or share them just like any journaled reflection.
   const intakeEntries: Array<{ domain: string; content: string }> = []
 
+  if (family_description) {
+    intakeEntries.push({ domain: 'family',  content: family_description })
+  }
   if (life_description) {
     intakeEntries.push({ domain: 'other',   content: life_description })
   }

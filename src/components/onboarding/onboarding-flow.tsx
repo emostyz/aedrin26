@@ -18,12 +18,17 @@ const REL_OPTIONS: { value: RelStatus; label: string }[] = [
 interface StepData {
   relationship_status: RelStatus | ''
   location: string
+  company: string
+  job_title: string
+  job_happiness: string
+  career_goals: string
+  family_description: string
   life_description: string
   biggest_regret: string
   life_purpose: string
 }
 
-const TOTAL_STEPS = 5
+const TOTAL_STEPS = 7
 
 const SLIDE = {
   enter: (dir: number) => ({ opacity: 0, x: dir > 0 ? 40 : -40 }),
@@ -38,6 +43,11 @@ export function OnboardingFlow({ legalName }: { legalName: string }) {
   const [data, setData] = useState<StepData>({
     relationship_status: '',
     location: '',
+    company: '',
+    job_title: '',
+    job_happiness: '',
+    career_goals: '',
+    family_description: '',
     life_description: '',
     biggest_regret: '',
     life_purpose: '',
@@ -64,6 +74,11 @@ export function OnboardingFlow({ legalName }: { legalName: string }) {
     const fd = new FormData()
     if (data.relationship_status) fd.set('relationship_status', data.relationship_status)
     fd.set('location', data.location)
+    fd.set('company', data.company)
+    fd.set('job_title', data.job_title)
+    fd.set('job_happiness', data.job_happiness)
+    fd.set('career_goals', data.career_goals)
+    fd.set('family_description', data.family_description)
     fd.set('life_description', data.life_description)
     fd.set('biggest_regret', data.biggest_regret)
     fd.set('life_purpose', data.life_purpose)
@@ -77,7 +92,7 @@ export function OnboardingFlow({ legalName }: { legalName: string }) {
   const steps = [
     // Step 0: Welcome
     <StepWelcome key="welcome" firstName={firstName} onNext={goNext} />,
-    // Step 1: Life stage
+    // Step 1 of 6: Life stage
     <StepLifeStage
       key="life-stage"
       data={data}
@@ -85,7 +100,23 @@ export function OnboardingFlow({ legalName }: { legalName: string }) {
       onNext={goNext}
       onBack={goBack}
     />,
-    // Step 2: Life description
+    // Step 2 of 6: Work (new)
+    <StepWork
+      key="work"
+      data={data}
+      onChange={set}
+      onNext={goNext}
+      onBack={goBack}
+    />,
+    // Step 3 of 6: Family (new)
+    <StepFamily
+      key="family"
+      value={data.family_description}
+      onChange={(v) => set('family_description', v)}
+      onNext={goNext}
+      onBack={goBack}
+    />,
+    // Step 4 of 6: Life description
     <StepLifeDescription
       key="life-desc"
       value={data.life_description}
@@ -93,7 +124,7 @@ export function OnboardingFlow({ legalName }: { legalName: string }) {
       onNext={goNext}
       onBack={goBack}
     />,
-    // Step 3: Biggest regret
+    // Step 5 of 6: Biggest regret
     <StepBiggestRegret
       key="regret"
       value={data.biggest_regret}
@@ -101,7 +132,7 @@ export function OnboardingFlow({ legalName }: { legalName: string }) {
       onNext={goNext}
       onBack={goBack}
     />,
-    // Step 4: Life purpose + submit
+    // Step 6 of 6: Life purpose + submit
     <StepLifePurpose
       key="purpose"
       value={data.life_purpose}
@@ -194,7 +225,7 @@ function StepLifeStage({
   return (
     <div className="space-y-8 flex flex-col justify-center h-full pt-8">
       <div className="space-y-2">
-        <p className="text-label">1 of 4</p>
+        <p className="text-label">1 of 6</p>
         <h2 className="text-[1.5rem] font-light tracking-[-0.02em] text-foreground leading-snug">
           Where are you in life right now?
         </h2>
@@ -241,6 +272,115 @@ function StepLifeStage({
   )
 }
 
+function StepWork({
+  data, onChange, onNext, onBack,
+}: {
+  data: StepData
+  onChange: <K extends keyof StepData>(key: K, value: StepData[K]) => void
+  onNext: () => void
+  onBack: () => void
+}) {
+  return (
+    <div className="space-y-8 flex flex-col justify-center h-full pt-8">
+      <div className="space-y-2">
+        <p className="text-label">2 of 6</p>
+        <h2 className="text-[1.5rem] font-light tracking-[-0.02em] text-foreground leading-snug">
+          Tell us about your work.
+        </h2>
+      </div>
+
+      <div className="space-y-5">
+        <div className="space-y-2">
+          <label className="text-xs text-muted-foreground uppercase tracking-wider">
+            Where do you work?
+          </label>
+          <input
+            type="text"
+            value={data.company}
+            onChange={(e) => onChange('company', e.target.value)}
+            placeholder="Company name, or 'Self-employed', 'Retired'…"
+            className="w-full bg-input border border-border rounded-md px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring transition-all"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-xs text-muted-foreground uppercase tracking-wider">
+            What&apos;s your role?
+          </label>
+          <input
+            type="text"
+            value={data.job_title}
+            onChange={(e) => onChange('job_title', e.target.value)}
+            placeholder="Your title or what you actually do…"
+            className="w-full bg-input border border-border rounded-md px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring transition-all"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-xs text-muted-foreground uppercase tracking-wider">
+            How do you feel about your work?
+          </label>
+          <textarea
+            value={data.job_happiness}
+            onChange={(e) => onChange('job_happiness', e.target.value)}
+            placeholder="Be honest. Do you love it? Tolerate it? Is it a calling or just a job?"
+            rows={3}
+            className="w-full bg-input border border-border rounded-lg px-4 py-3.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-none transition-all"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-xs text-muted-foreground uppercase tracking-wider">
+            Where do you want to go?
+          </label>
+          <textarea
+            value={data.career_goals}
+            onChange={(e) => onChange('career_goals', e.target.value)}
+            placeholder="Long-term — what does success look like for you professionally?"
+            rows={3}
+            className="w-full bg-input border border-border rounded-lg px-4 py-3.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-none transition-all"
+          />
+        </div>
+      </div>
+
+      <StepNav onBack={onBack} onNext={onNext} />
+    </div>
+  )
+}
+
+function StepFamily({
+  value, onChange, onNext, onBack,
+}: {
+  value: string
+  onChange: (v: string) => void
+  onNext: () => void
+  onBack: () => void
+}) {
+  return (
+    <div className="space-y-8 flex flex-col justify-center h-full pt-8">
+      <div className="space-y-2">
+        <p className="text-label">3 of 6</p>
+        <h2 className="text-[1.5rem] font-light tracking-[-0.02em] text-foreground leading-snug">
+          Tell us about your family.
+        </h2>
+        <p className="text-sm text-muted-foreground leading-relaxed">
+          Who are the people in your life — partners, children, parents, siblings? Tell us who they are, how old they are, whether they&apos;re still with you, and a little about your relationship with each of them.
+        </p>
+      </div>
+
+      <textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={`My wife Sarah (42) and I have been married for 15 years. We have two kids, Emma (12) and James (9)…\n\nMy father passed away in 2019. My mother Linda (71) lives in Phoenix…`}
+        rows={8}
+        className="w-full bg-input border border-border rounded-lg px-4 py-3.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-none transition-all"
+      />
+
+      <StepNav onBack={onBack} onNext={onNext} />
+    </div>
+  )
+}
+
 function StepLifeDescription({
   value, onChange, onNext, onBack,
 }: {
@@ -252,7 +392,7 @@ function StepLifeDescription({
   return (
     <div className="space-y-8 flex flex-col justify-center h-full pt-8">
       <div className="space-y-2">
-        <p className="text-label">2 of 4</p>
+        <p className="text-label">4 of 6</p>
         <h2 className="text-[1.5rem] font-light tracking-[-0.02em] text-foreground leading-snug">
           Describe your life in a paragraph.
         </h2>
@@ -285,7 +425,7 @@ function StepBiggestRegret({
   return (
     <div className="space-y-8 flex flex-col justify-center h-full pt-8">
       <div className="space-y-2">
-        <p className="text-label">3 of 4</p>
+        <p className="text-label">5 of 6</p>
         <h2 className="text-[1.5rem] font-light tracking-[-0.02em] text-foreground leading-snug">
           What is your biggest regret?
         </h2>
@@ -321,7 +461,7 @@ function StepLifePurpose({
   return (
     <div className="space-y-8 flex flex-col justify-center h-full pt-8">
       <div className="space-y-2">
-        <p className="text-label">4 of 4</p>
+        <p className="text-label">6 of 6</p>
         <h2 className="text-[1.5rem] font-light tracking-[-0.02em] text-foreground leading-snug">
           What do you believe your life purpose is?
         </h2>

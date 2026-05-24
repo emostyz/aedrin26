@@ -55,6 +55,7 @@ function FollowUpCard({
       {question.type === 'freeform' ? (
         <div className="space-y-2">
           <textarea
+            autoFocus
             value={freeformValue}
             onChange={(e) => setFreeformValue(e.target.value)}
             placeholder={question.placeholder ?? 'Write your response…'}
@@ -140,14 +141,16 @@ function FollowUpCard({
 }
 
 // ── Main component ─────────────────────────────────────────────────────────────
+// phase: idle → writing → saved → (auto follow-up shown inline if generated)
 export function TodayPrompt({ promptId, promptText, domain }: TodayPromptProps) {
   const [phase, setPhase]               = useState<'idle' | 'writing' | 'saved'>('idle')
   const [content, setContent]           = useState('')
   const [savedContent, setSavedContent] = useState('')
   const [isPending, startT]             = useTransition()
   const [error, setError]               = useState<string | null>(null)
-  const [followUps, setFollowUps]       = useState<FollowUpQuestion[]>([])
-  const [loadingDeepen, setLoadingDeepen] = useState(false)
+  // Auto-generated follow-up (fires after save, only if relevant)
+  const [followUp, setFollowUp]         = useState<FollowUpQuestion | null>(null)
+  const [followUpDone, setFollowUpDone] = useState(false)
 
   const domainLabel = domain.charAt(0).toUpperCase() + domain.slice(1)
 
@@ -158,8 +161,7 @@ export function TodayPrompt({ promptId, promptText, domain }: TodayPromptProps) 
     const fd = new FormData()
     fd.set('domain', domain)
     fd.set('content', text)
-    // Use daily_prompt_id (not prompt_id) — daily prompts live in a separate
-    // table from interview_prompts; mixing them triggers a FK constraint error.
+    // Use daily_prompt_id — daily prompts live in a separate table from interview_prompts
     fd.set('daily_prompt_id', promptId)
 
     startT(async () => {
@@ -167,30 +169,24 @@ export function TodayPrompt({ promptId, promptText, domain }: TodayPromptProps) 
       if (result?.error) { setError(result.error); return }
       setSavedContent(text)
       setPhase('saved')
+
+      // Fire-and-forget: generate one follow-up question if relevant
+      suggestFollowUps(domain, text).then((qs) => {
+        const top = qs[0] ?? null
+        setFollowUp(top)
+      })
     })
   }
 
-  async function handleDeepen() {
-    if (!savedContent) return
-    setLoadingDeepen(true)
-    setFollowUps([])
-    const qs = await suggestFollowUps(domain, savedContent)
-    setFollowUps(qs)
-    setLoadingDeepen(false)
-  }
-
-  function dismissFollowUp(i: number) {
-    setFollowUps((prev) => prev.filter((_, j) => j !== i))
-  }
-
-  function saveFollowUp(i: number, text: string) {
+  function handleFollowUpSave(answerText: string) {
     const fd = new FormData()
     fd.set('domain', domain)
-    fd.set('content', text)
+    fd.set('content', answerText)
     fd.set('daily_prompt_id', promptId)
     startT(async () => {
       await saveEntry(fd)
-      setFollowUps((prev) => prev.filter((_, j) => j !== i))
+      setFollowUp(null)
+      setFollowUpDone(true)
     })
   }
 
@@ -279,11 +275,11 @@ export function TodayPrompt({ promptId, promptText, domain }: TodayPromptProps) 
         )}
       </AnimatePresence>
 
-      {/* Inline follow-up questions (after saving + deepening) */}
+      {/* Auto follow-up question — shown after save if AI thinks one is relevant */}
       <AnimatePresence>
-        {phase === 'saved' && followUps.length > 0 && (
+        {phase === 'saved' && followUp && !followUpDone && (
           <motion.div
-            key="followups"
+            key="followup"
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
@@ -291,29 +287,15 @@ export function TodayPrompt({ promptId, promptText, domain }: TodayPromptProps) 
             className="space-y-4"
           >
             <div className="flex items-center gap-3">
-              <p className="text-label">Go deeper</p>
+              <p className="text-label">One more thing</p>
               <div className="flex-1 h-px bg-border" />
-              <button
-                type="button"
-                onClick={() => setFollowUps([])}
-                className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
-              >
-                Dismiss all
-              </button>
             </div>
-            <Stagger className="space-y-3">
-              {followUps.map((q, i) => (
-                <StaggerItem key={`${i}-${q.text.slice(0, 16)}`}>
-                  <FollowUpCard
-                    question={q}
-                    onSave={(text) => saveFollowUp(i, text)}
-                    onDismiss={() => dismissFollowUp(i)}
-                    isPending={isPending}
-                  />
-                </StaggerItem>
-              ))}
-            </Stagger>
-            <p className="text-xs text-muted-foreground">Answer what resonates — skip the rest.</p>
+            <FollowUpCard
+              question={followUp}
+              onSave={handleFollowUpSave}
+              onDismiss={() => { setFollowUp(null); setFollowUpDone(true) }}
+              isPending={isPending}
+            />
           </motion.div>
         )}
       </AnimatePresence>
@@ -341,52 +323,25 @@ export function TodayPrompt({ promptId, promptText, domain }: TodayPromptProps) 
         </motion.div>
       )}
 
-      {/* Saved action row — Deepen is clearly a button (stays inline), links are secondary */}
+      {/* Saved action row */}
       {phase === 'saved' && (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          className="space-y-3"
+          className="flex flex-wrap items-center gap-4 pt-2 border-t border-border"
         >
-          {/* Primary: Go deeper — generates follow-up questions HERE, does not navigate */}
-          {followUps.length === 0 && (
-            <div>
-              <button
-                type="button"
-                onClick={handleDeepen}
-                disabled={loadingDeepen}
-                className="text-sm text-foreground hover:opacity-70 transition-opacity disabled:opacity-40"
-              >
-                {loadingDeepen ? (
-                  <motion.span
-                    animate={{ opacity: [0.4, 1, 0.4] }}
-                    transition={{ repeat: Infinity, duration: 1.4 }}
-                  >
-                    Thinking…
-                  </motion.span>
-                ) : 'Go deeper →'}
-              </button>
-              <p className="text-[10px] text-muted-foreground/50 mt-0.5">
-                Generates follow-up questions on this page
-              </p>
-            </div>
-          )}
-
-          {/* Secondary: navigation links, visually quieter and separated */}
-          <div className="flex flex-wrap items-center gap-4 pt-2 border-t border-border">
-            <Link
-              href={`/app/interview/${domain}`}
-              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-            >
-              More {domainLabel.toLowerCase()} questions →
-            </Link>
-            <Link
-              href="/app/review"
-              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Review entries
-            </Link>
-          </div>
+          <Link
+            href={`/app/interview/${domain}`}
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            More {domainLabel.toLowerCase()} questions →
+          </Link>
+          <Link
+            href="/app/review"
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Review entries
+          </Link>
         </motion.div>
       )}
     </div>

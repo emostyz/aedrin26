@@ -9,6 +9,7 @@ import { getOrCreateTodaysPrompt } from '@/app/actions/daily-prompt'
 import { getOrCreateTodaysInsight } from '@/app/actions/daily-insight'
 import { getHorizonItems } from '@/app/actions/horizon'
 import type { Domain } from '@/lib/supabase/types'
+import { StreakTracker, type StreakState } from '@/components/dashboard/streak-tracker'
 
 // Domain metadata — colour ring for the completeness arc
 const DOMAINS: { domain: Domain; label: string; color: string }[] = [
@@ -92,13 +93,18 @@ export default async function DashboardPage() {
   const service = createServiceClient()
 
   // Run all data fetches in parallel, including AI generation for today's prompt + insight
-  const [entriesResult, profileResult, legacyResult, todayPromptResult, todayInsightResult, horizonItems] = await Promise.all([
+  const [entriesResult, profileResult, legacyResult, todayPromptResult, todayInsightResult, horizonItems, recentEntriesResult] = await Promise.all([
     supabase.from('soul_entries').select('id, domain, content').eq('user_id', user.id),
     supabase.from('users').select('account_state, legal_name, display_name').eq('id', user.id).single(),
     service.from('heirs').select('id, user_id').eq('email', user.email!.toLowerCase()).eq('access_status', 'active'),
     getOrCreateTodaysPrompt(),
     getOrCreateTodaysInsight(),
     getHorizonItems(),
+    supabase.from('soul_entries')
+      .select('created_at')
+      .eq('user_id', user.id)
+      .gte('created_at', new Date(Date.now() - 14 * 24 * 3600 * 1000).toISOString())
+      .order('created_at', { ascending: false }),
   ])
 
   const entries = (entriesResult.data ?? []) as { id: string; domain: Domain; content: string }[]
@@ -106,6 +112,38 @@ export default async function DashboardPage() {
   const legacyHeirs = (legacyResult.data ?? []) as { id: string; user_id: string }[]
   const todayPrompt = todayPromptResult.prompt
   const todayInsight = todayInsightResult.insight
+
+  // Streak computation
+  const recentDates = (recentEntriesResult.data ?? []).map((e) =>
+    new Date(e.created_at).toISOString().slice(0, 10)
+  )
+  const activeDates = [...new Set(recentDates)]
+
+  function computeStreak(dates: string[]): number {
+    const dateSet = new Set(dates)
+    let streak = 0
+    const today = new Date()
+    for (let i = 0; i < 365; i++) {
+      const d = new Date(today)
+      d.setDate(d.getDate() - i)
+      const ds = d.toISOString().slice(0, 10)
+      if (dateSet.has(ds)) streak++
+      else break
+    }
+    return streak
+  }
+
+  function computeStreakState(streak: number, dates: string[]): StreakState {
+    if (dates.length === 0) return 'never'
+    if (streak === 0) return 'lost'
+    if (streak <= 2) return 'new'
+    if (streak <= 6) return 'building'
+    if (streak <= 13) return 'strong'
+    return 'legendary'
+  }
+
+  const streakDays = computeStreak(activeDates)
+  const streakState = computeStreakState(streakDays, activeDates)
 
   const countByDomain = entries.reduce<Record<string, number>>((acc, e) => {
     acc[e.domain] = (acc[e.domain] ?? 0) + 1
@@ -212,6 +250,13 @@ export default async function DashboardPage() {
           </FadeUp>
         )}
       </div>
+
+      {/* ── Streak tracker ──────────────────────────────────────────── */}
+      <StreakTracker
+        activeDates={activeDates}
+        streakDays={streakDays}
+        streakState={streakState}
+      />
 
       {/* ── Horizon ─────────────────────────────────────────────────── */}
       <FadeUp delay={0.15}>

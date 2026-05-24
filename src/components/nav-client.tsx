@@ -111,7 +111,9 @@ export function NavClient({ displayName, children }: Props) {
           </nav>
 
           <div className="flex items-center gap-4">
-            <span className="hidden md:block text-xs text-muted-foreground truncate max-w-[120px]">{displayName}</span>
+            <Link href="/app/profile" className="hidden md:block text-xs text-muted-foreground hover:text-foreground transition-colors truncate max-w-[120px]">
+              {displayName}
+            </Link>
             {children}
           </div>
         </div>
