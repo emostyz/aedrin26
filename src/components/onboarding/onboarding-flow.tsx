@@ -145,7 +145,7 @@ export function OnboardingFlow({ legalName }: { legalName: string }) {
   ]
 
   return (
-    <div className="min-h-dvh flex flex-col items-center justify-center px-6">
+    <div className="min-h-dvh flex flex-col items-center justify-center px-6 py-16">
       <div className="w-full max-w-[480px]">
         {/* Progress bar */}
         <div className="mb-12">
@@ -159,8 +159,8 @@ export function OnboardingFlow({ legalName }: { legalName: string }) {
           </div>
         </div>
 
-        {/* Step content */}
-        <div className="relative overflow-hidden" style={{ minHeight: '60vh' }}>
+        {/* Step content — flows naturally so tall steps are never clipped */}
+        <div className="relative">
           <AnimatePresence mode="wait" custom={dir}>
             <motion.div
               key={step}
@@ -170,7 +170,6 @@ export function OnboardingFlow({ legalName }: { legalName: string }) {
               animate="center"
               exit="exit"
               transition={{ duration: 0.38, ease: [0.25, 0.1, 0.25, 1] }}
-              className="absolute inset-0"
             >
               {steps[step]}
             </motion.div>
@@ -185,7 +184,7 @@ export function OnboardingFlow({ legalName }: { legalName: string }) {
 
 function StepWelcome({ firstName, onNext }: { firstName: string; onNext: () => void }) {
   return (
-    <div className="space-y-10 flex flex-col justify-center h-full pt-8">
+    <div className="space-y-10 pt-8">
       <div className="space-y-3">
         <p className="text-label">AEDRIN</p>
         <h1 className="text-[2.25rem] font-light tracking-[-0.03em] text-foreground leading-[1.15]">
@@ -223,7 +222,7 @@ function StepLifeStage({
   onBack: () => void
 }) {
   return (
-    <div className="space-y-8 flex flex-col justify-center h-full pt-8">
+    <div className="space-y-8 pt-8">
       <div className="space-y-2">
         <p className="text-label">1 of 6</p>
         <h2 className="text-[1.5rem] font-light tracking-[-0.02em] text-foreground leading-snug">
@@ -281,7 +280,7 @@ function StepWork({
   onBack: () => void
 }) {
   return (
-    <div className="space-y-8 flex flex-col justify-center h-full pt-8">
+    <div className="space-y-8 pt-8">
       <div className="space-y-2">
         <p className="text-label">2 of 6</p>
         <h2 className="text-[1.5rem] font-light tracking-[-0.02em] text-foreground leading-snug">
@@ -357,7 +356,7 @@ function StepFamily({
   onBack: () => void
 }) {
   return (
-    <div className="space-y-8 flex flex-col justify-center h-full pt-8">
+    <div className="space-y-8 pt-8">
       <div className="space-y-2">
         <p className="text-label">3 of 6</p>
         <h2 className="text-[1.5rem] font-light tracking-[-0.02em] text-foreground leading-snug">
@@ -390,7 +389,7 @@ function StepLifeDescription({
   onBack: () => void
 }) {
   return (
-    <div className="space-y-8 flex flex-col justify-center h-full pt-8">
+    <div className="space-y-8 pt-8">
       <div className="space-y-2">
         <p className="text-label">4 of 6</p>
         <h2 className="text-[1.5rem] font-light tracking-[-0.02em] text-foreground leading-snug">
@@ -423,7 +422,7 @@ function StepBiggestRegret({
   onBack: () => void
 }) {
   return (
-    <div className="space-y-8 flex flex-col justify-center h-full pt-8">
+    <div className="space-y-8 pt-8">
       <div className="space-y-2">
         <p className="text-label">5 of 6</p>
         <h2 className="text-[1.5rem] font-light tracking-[-0.02em] text-foreground leading-snug">
@@ -459,7 +458,7 @@ function StepLifePurpose({
   error: string | null
 }) {
   return (
-    <div className="space-y-8 flex flex-col justify-center h-full pt-8">
+    <div className="space-y-8 pt-8">
       <div className="space-y-2">
         <p className="text-label">6 of 6</p>
         <h2 className="text-[1.5rem] font-light tracking-[-0.02em] text-foreground leading-snug">
