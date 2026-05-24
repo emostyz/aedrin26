@@ -7,9 +7,11 @@ export default async function LifeMapPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
 
-  const { data, error } = await supabase
-    .from('life_events').select('*').eq('user_id', user.id)
-    .order('event_date', { ascending: true, nullsFirst: false })
+  const [{ data, error }, { count: entryCount }] = await Promise.all([
+    supabase.from('life_events').select('*').eq('user_id', user.id)
+      .order('event_date', { ascending: true, nullsFirst: false }),
+    supabase.from('soul_entries').select('id', { count: 'exact', head: true }).eq('user_id', user.id),
+  ])
 
   if (error) return (
     <div className="border border-border rounded-lg px-5 py-10 text-center">
@@ -24,8 +26,14 @@ export default async function LifeMapPage() {
         <p className="text-[1.75rem] font-light tracking-[-0.03em] text-foreground leading-tight">
           The moments that shaped you.
         </p>
+        <p className="text-sm text-muted-foreground leading-relaxed max-w-md">
+          Key events extracted from your Capture sessions, arranged in time. The more you share in interviews, the richer this becomes.
+        </p>
       </FadeUp>
-      <Timeline initialEvents={(data ?? []) as Parameters<typeof Timeline>[0]['initialEvents']} />
+      <Timeline
+        initialEvents={(data ?? []) as Parameters<typeof Timeline>[0]['initialEvents']}
+        hasSoulEntries={(entryCount ?? 0) > 0}
+      />
     </div>
   )
 }

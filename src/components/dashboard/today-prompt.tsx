@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import Link from 'next/link'
-import { motion, AnimatePresence, Stagger, StaggerItem } from '@/components/ui/motion'
+import { motion, AnimatePresence } from '@/components/ui/motion'
 import { saveEntry } from '@/app/actions/entries'
 import { suggestFollowUps } from '@/app/actions/ai'
 import { SoundwaveRecorder } from '@/components/ui/soundwave-recorder'
@@ -12,14 +12,12 @@ interface TodayPromptProps {
   promptId: string
   promptText: string
   domain: Domain
+  existingEntry?: { content: string } | null
 }
 
-// ── Follow-up card (choice or freeform) ───────────────────────────────────────
+// ── Follow-up card ─────────────────────────────────────────────────────────────
 function FollowUpCard({
-  question,
-  onSave,
-  onDismiss,
-  isPending,
+  question, onSave, onDismiss, isPending,
 }: {
   question: FollowUpQuestion
   onSave: (text: string) => void
@@ -141,14 +139,15 @@ function FollowUpCard({
 }
 
 // ── Main component ─────────────────────────────────────────────────────────────
-// phase: idle → writing → saved → (auto follow-up shown inline if generated)
-export function TodayPrompt({ promptId, promptText, domain }: TodayPromptProps) {
-  const [phase, setPhase]               = useState<'idle' | 'writing' | 'saved'>('idle')
+export function TodayPrompt({ promptId, promptText, domain, existingEntry }: TodayPromptProps) {
+  // If already answered (server-confirmed), start in 'saved' state
+  const [phase, setPhase]               = useState<'idle' | 'writing' | 'saved'>(
+    existingEntry ? 'saved' : 'idle'
+  )
   const [content, setContent]           = useState('')
-  const [savedContent, setSavedContent] = useState('')
+  const [savedContent, setSavedContent] = useState(existingEntry?.content ?? '')
   const [isPending, startT]             = useTransition()
   const [error, setError]               = useState<string | null>(null)
-  // Auto-generated follow-up (fires after save, only if relevant)
   const [followUp, setFollowUp]         = useState<FollowUpQuestion | null>(null)
   const [followUpDone, setFollowUpDone] = useState(false)
 
@@ -161,7 +160,6 @@ export function TodayPrompt({ promptId, promptText, domain }: TodayPromptProps) 
     const fd = new FormData()
     fd.set('domain', domain)
     fd.set('content', text)
-    // Use daily_prompt_id — daily prompts live in a separate table from interview_prompts
     fd.set('daily_prompt_id', promptId)
 
     startT(async () => {
@@ -170,10 +168,9 @@ export function TodayPrompt({ promptId, promptText, domain }: TodayPromptProps) 
       setSavedContent(text)
       setPhase('saved')
 
-      // Fire-and-forget: generate one follow-up question if relevant
+      // Fire-and-forget: generate one follow-up if relevant
       suggestFollowUps(domain, text).then((qs) => {
-        const top = qs[0] ?? null
-        setFollowUp(top)
+        setFollowUp(qs[0] ?? null)
       })
     })
   }
@@ -190,9 +187,89 @@ export function TodayPrompt({ promptId, promptText, domain }: TodayPromptProps) 
     })
   }
 
+  // ── Saved / already-answered state ──────────────────────────────────────────
+  if (phase === 'saved') {
+    return (
+      <div className="border border-border rounded-xl p-6 sm:p-8 space-y-5">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] text-foreground/40 uppercase tracking-wider">Today&apos;s reflection</span>
+            <span className="text-[10px] text-foreground/25">·</span>
+            <span className="text-[10px] text-foreground/40 uppercase tracking-wider">Done</span>
+          </div>
+          <span className="text-[10px] text-muted-foreground border border-border rounded-full px-2.5 py-1">
+            {domainLabel}
+          </span>
+        </div>
+
+        {/* The question, dimmed */}
+        <p className="text-sm text-foreground/40 leading-relaxed font-light line-clamp-2">{promptText}</p>
+
+        {/* Their answer */}
+        <motion.div
+          initial={{ opacity: 0, y: 4 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+          className="border-l-2 border-foreground/20 pl-4"
+        >
+          <p className="text-sm text-foreground/80 leading-relaxed font-light">{savedContent}</p>
+        </motion.div>
+
+        {/* Auto follow-up */}
+        <AnimatePresence>
+          {followUp && !followUpDone && (
+            <motion.div
+              key="followup"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.35 }}
+              className="space-y-3 pt-2"
+            >
+              <div className="flex items-center gap-3">
+                <p className="text-label">One more thing</p>
+                <div className="flex-1 h-px bg-border" />
+              </div>
+              <FollowUpCard
+                question={followUp}
+                onSave={handleFollowUpSave}
+                onDismiss={() => { setFollowUp(null); setFollowUpDone(true) }}
+                isPending={isPending}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* What's next */}
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 pt-1 border-t border-border/60">
+          <Link
+            href={`/app/interview/${domain}`}
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            More {domainLabel.toLowerCase()} questions →
+          </Link>
+          <Link
+            href="/app/review"
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Review all entries →
+          </Link>
+          <Link
+            href="/app/interview"
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Explore other topics →
+          </Link>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Unanswered state ─────────────────────────────────────────────────────────
   return (
     <div className="border border-border rounded-xl p-6 sm:p-8 space-y-6">
-      {/* Label row */}
+      {/* Header */}
       <div className="flex items-center justify-between">
         <p className="text-label">Today&apos;s reflection</p>
         <span className="text-[10px] text-muted-foreground border border-border rounded-full px-2.5 py-1">
@@ -200,33 +277,12 @@ export function TodayPrompt({ promptId, promptText, domain }: TodayPromptProps) 
         </span>
       </div>
 
-      {/* Prompt text / saved confirmation */}
-      <AnimatePresence mode="wait">
-        {phase !== 'saved' ? (
-          <motion.p
-            key="prompt"
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.4, ease: [0.25, 0.1, 0.25, 1] }}
-            className="text-[1.15rem] sm:text-[1.3rem] font-light leading-relaxed text-foreground tracking-[-0.01em]"
-          >
-            {promptText}
-          </motion.p>
-        ) : (
-          <motion.p
-            key="saved"
-            initial={{ opacity: 0, scale: 0.97 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.35 }}
-            className="text-sm font-light text-muted-foreground italic leading-relaxed line-clamp-4"
-          >
-            &ldquo;{savedContent}&rdquo;
-          </motion.p>
-        )}
-      </AnimatePresence>
+      {/* The question */}
+      <p className="text-[1.15rem] sm:text-[1.25rem] font-light leading-relaxed text-foreground tracking-[-0.01em]">
+        {promptText}
+      </p>
 
-      {/* Writing area */}
+      {/* Writing area (expands on Respond) */}
       <AnimatePresence>
         {phase === 'writing' && (
           <motion.div
@@ -234,7 +290,7 @@ export function TodayPrompt({ promptId, promptText, domain }: TodayPromptProps) 
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.35, ease: [0.25, 0.1, 0.25, 1] }}
+            transition={{ duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
             className="overflow-hidden space-y-3"
           >
             <textarea
@@ -245,15 +301,8 @@ export function TodayPrompt({ promptId, promptText, domain }: TodayPromptProps) 
               rows={5}
               className="w-full bg-input border border-border rounded-lg px-4 py-3.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-none transition-all"
             />
-
-            <SoundwaveRecorder
-              onTranscript={(t) => setContent(t)}
-              disabled={isPending}
-              canvasHeight={40}
-            />
-
+            <SoundwaveRecorder onTranscript={(t) => setContent(t)} disabled={isPending} canvasHeight={40} />
             {error && <p className="text-xs text-destructive">{error}</p>}
-
             <div className="flex items-center gap-3">
               <button
                 type="button"
@@ -275,74 +324,23 @@ export function TodayPrompt({ promptId, promptText, domain }: TodayPromptProps) 
         )}
       </AnimatePresence>
 
-      {/* Auto follow-up question — shown after save if AI thinks one is relevant */}
-      <AnimatePresence>
-        {phase === 'saved' && followUp && !followUpDone && (
-          <motion.div
-            key="followup"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.35 }}
-            className="space-y-4"
-          >
-            <div className="flex items-center gap-3">
-              <p className="text-label">One more thing</p>
-              <div className="flex-1 h-px bg-border" />
-            </div>
-            <FollowUpCard
-              question={followUp}
-              onSave={handleFollowUpSave}
-              onDismiss={() => { setFollowUp(null); setFollowUpDone(true) }}
-              isPending={isPending}
-            />
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       {/* Idle action row */}
       {phase === 'idle' && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="flex items-center gap-4"
-        >
+        <div className="flex items-center gap-4">
           <button
             type="button"
             onClick={() => setPhase('writing')}
-            className="text-sm text-foreground hover:opacity-70 transition-opacity"
+            className="bg-primary text-primary-foreground rounded-md px-4 py-2 text-sm font-medium hover:opacity-90 transition-opacity"
           >
-            Respond →
+            Write your reflection
           </button>
           <Link
             href={`/app/interview/${domain}`}
             className="text-xs text-muted-foreground hover:text-foreground transition-colors"
           >
-            Open full {domainLabel.toLowerCase()} interview
+            Open in Capture →
           </Link>
-        </motion.div>
-      )}
-
-      {/* Saved action row */}
-      {phase === 'saved' && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="flex flex-wrap items-center gap-4 pt-2 border-t border-border"
-        >
-          <Link
-            href={`/app/interview/${domain}`}
-            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-          >
-            More {domainLabel.toLowerCase()} questions →
-          </Link>
-          <Link
-            href="/app/review"
-            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Review entries
-          </Link>
-        </motion.div>
+        </div>
       )}
     </div>
   )

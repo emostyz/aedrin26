@@ -1,7 +1,110 @@
 'use server'
 
 import { getOpenAIClient } from '@/lib/openai'
+import { createClient } from '@/lib/supabase/server'
+import { createLifeEvent } from '@/app/actions/life-events'
 import type { Domain, FollowUpQuestion } from '@/lib/supabase/types'
+
+// ── Suggested life event (returned by AI) ─────────────────────────────────────
+export interface SuggestedLifeEvent {
+  title: string
+  year: number | null
+  description: string | null
+}
+
+const LIFE_EVENT_SCHEMA = {
+  type: 'object',
+  properties: {
+    events: {
+      type: 'array',
+      description: 'Key life events extracted from the entries. 3–15 events ordered chronologically.',
+      minItems: 0,
+      maxItems: 15,
+      items: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: 'Short title for the life event (3–8 words).' },
+          year:  { type: ['integer', 'null'], description: 'Year the event occurred, or null if unknown.' },
+          description: { type: ['string', 'null'], description: 'One sentence describing the event and its significance, or null.' },
+        },
+        required: ['title', 'year', 'description'],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ['events'],
+  additionalProperties: false,
+}
+
+export async function suggestLifeEvents(): Promise<SuggestedLifeEvent[]> {
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return []
+
+    // Pull up to 40 entries (prioritise childhood, career, family — most event-rich)
+    const { data } = await supabase
+      .from('soul_entries')
+      .select('domain, content')
+      .eq('user_id', user.id)
+      .in('domain', ['childhood', 'career', 'family', 'lessons', 'other', 'values'])
+      .order('created_at', { ascending: true })
+      .limit(40)
+
+    if (!data || data.length === 0) return []
+
+    const entriesText = data
+      .map((e) => `[${e.domain}] ${e.content}`)
+      .join('\n\n---\n\n')
+
+    const client = getOpenAIClient()
+    const response = await client.chat.completions.create({
+      model: 'gpt-4o',
+      temperature: 0.3,
+      response_format: {
+        type: 'json_schema',
+        json_schema: {
+          name: 'life_events',
+          strict: true,
+          schema: LIFE_EVENT_SCHEMA,
+        },
+      },
+      messages: [
+        {
+          role: 'system',
+          content: `You are reading someone's personal life-story entries and extracting the specific, datable events they mention — births, moves, milestones, relationships, jobs, losses, achievements.
+
+Rules:
+- Only extract events that are clearly stated or strongly implied
+- Each event should be meaningful and distinct (not vague moods or opinions)
+- Title should be concise and specific: "Moved to New York" not "Made a big move"
+- Estimate the year when possible; null if genuinely unknown
+- Order chronologically
+- Do not duplicate or summarise the same event twice`,
+        },
+        {
+          role: 'user',
+          content: `Here are my life-story entries:\n\n${entriesText}\n\nExtract the key life events.`,
+        },
+      ],
+    })
+
+    const raw = response.choices[0]?.message?.content
+    if (!raw) return []
+    const parsed = JSON.parse(raw) as { events: SuggestedLifeEvent[] }
+    return Array.isArray(parsed.events) ? parsed.events : []
+  } catch {
+    return []
+  }
+}
+
+export async function acceptLifeEvent(event: SuggestedLifeEvent): Promise<{ error?: string }> {
+  const fd = new FormData()
+  fd.set('title', event.title)
+  if (event.year) fd.set('event_date', `${event.year}-01-01`)
+  if (event.description) fd.set('description', event.description)
+  return createLifeEvent(fd)
+}
 
 const DOMAIN_CONTEXT: Record<Domain, string> = {
   childhood: 'early memories, home life, formative experiences',

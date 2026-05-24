@@ -94,7 +94,7 @@ export default async function DashboardPage() {
 
   // Run all data fetches in parallel, including AI generation for today's prompt + insight
   const [entriesResult, profileResult, legacyResult, todayPromptResult, todayInsightResult, horizonItems, recentEntriesResult] = await Promise.all([
-    supabase.from('soul_entries').select('id, domain, content').eq('user_id', user.id),
+    supabase.from('soul_entries').select('id, domain, content, daily_prompt_id').eq('user_id', user.id),
     supabase.from('users').select('account_state, legal_name, display_name').eq('id', user.id).single(),
     service.from('heirs').select('id, user_id').eq('email', user.email!.toLowerCase()).eq('access_status', 'active'),
     getOrCreateTodaysPrompt(),
@@ -107,11 +107,16 @@ export default async function DashboardPage() {
       .order('created_at', { ascending: false }),
   ])
 
-  const entries = (entriesResult.data ?? []) as { id: string; domain: Domain; content: string }[]
+  const entries = (entriesResult.data ?? []) as { id: string; domain: Domain; content: string; daily_prompt_id: string | null }[]
   const profile = profileResult.data as { account_state: string; legal_name: string; display_name: string | null } | null
   const legacyHeirs = (legacyResult.data ?? []) as { id: string; user_id: string }[]
   const todayPrompt = todayPromptResult.prompt
   const todayInsight = todayInsightResult.insight
+
+  // Check if today's prompt has already been answered
+  const todayAnsweredEntry = todayPrompt
+    ? entries.find((e) => e.daily_prompt_id === todayPrompt.id) ?? null
+    : null
 
   // Streak computation
   const recentDates = (recentEntriesResult.data ?? []).map((e) =>
@@ -226,6 +231,7 @@ export default async function DashboardPage() {
               promptId={todayPrompt.id}
               promptText={todayPrompt.prompt_text}
               domain={todayPrompt.domain}
+              existingEntry={todayAnsweredEntry ? { content: todayAnsweredEntry.content } : null}
             />
           ) : (
             <div className="border border-border rounded-xl p-6 space-y-3">

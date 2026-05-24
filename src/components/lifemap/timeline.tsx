@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react'
 import { motion, AnimatePresence } from '@/components/ui/motion'
 import { createLifeEvent, deleteLifeEvent } from '@/app/actions/life-events'
+import { suggestLifeEvents, acceptLifeEvent, type SuggestedLifeEvent } from '@/app/actions/ai'
 import type { Database } from '@/lib/supabase/types'
 
 type LifeEvent = Database['public']['Tables']['life_events']['Row']
@@ -36,11 +37,43 @@ function groupByYear(events: LifeEvent[]): [number, LifeEvent[]][] {
 
 const CURRENT_YEAR = new Date().getFullYear()
 
-export function Timeline({ initialEvents }: { initialEvents: LifeEvent[] }) {
+export function Timeline({ initialEvents, hasSoulEntries }: { initialEvents: LifeEvent[]; hasSoulEntries?: boolean }) {
   const [events, setEvents]     = useState<LifeEvent[]>(initialEvents)
   const [showForm, setShowForm] = useState(false)
   const [error, setError]       = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
+
+  // AI extraction state
+  const [extracting, setExtracting]           = useState(false)
+  const [suggestions, setSuggestions]         = useState<SuggestedLifeEvent[]>([])
+  const [acceptedIndices, setAcceptedIndices] = useState<Set<number>>(new Set())
+  const [dismissedAll, setDismissedAll]       = useState(false)
+
+  async function handleExtract() {
+    setExtracting(true)
+    setSuggestions([])
+    setAcceptedIndices(new Set())
+    setDismissedAll(false)
+    const results = await suggestLifeEvents()
+    setSuggestions(results)
+    setExtracting(false)
+  }
+
+  function handleAcceptSuggestion(i: number, ev: SuggestedLifeEvent) {
+    startTransition(async () => {
+      const result = await acceptLifeEvent(ev)
+      if (result?.error) return
+      setAcceptedIndices((prev) => new Set([...prev, i]))
+      // Optimistically add to events list
+      setEvents((prev) => [...prev, {
+        id: crypto.randomUUID(), user_id: '',
+        title: ev.title,
+        event_date: ev.year ? `${ev.year}-01-01` : null,
+        description: ev.description,
+        created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+      }].sort(byDate))
+    })
+  }
 
   function handleAdd(fd: FormData) {
     setError(null)
@@ -85,6 +118,111 @@ export function Timeline({ initialEvents }: { initialEvents: LifeEvent[] }) {
           {showForm ? 'Cancel' : '+ Add'}
         </button>
       </div>
+
+      {/* AI extraction panel */}
+      {hasSoulEntries && !dismissedAll && (
+        <AnimatePresence>
+          {suggestions.length === 0 && !extracting && (
+            <motion.div
+              key="extract-cta"
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={{ duration: 0.3 }}
+              className="border border-border/60 rounded-lg px-5 py-4 bg-surface/20 space-y-3"
+            >
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Your life map fills in automatically from what you&apos;ve shared in Capture — births, moves, jobs, relationships.
+              </p>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={handleExtract}
+                  className="text-xs text-foreground border border-border rounded-md px-3 py-1.5 hover:bg-foreground/5 transition-colors"
+                >
+                  Extract key moments from my entries →
+                </button>
+                <button
+                  onClick={() => setDismissedAll(true)}
+                  className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </motion.div>
+          )}
+
+          {extracting && (
+            <motion.div
+              key="extracting"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="py-4 text-center"
+            >
+              <motion.p
+                animate={{ opacity: [0.4, 1, 0.4] }}
+                transition={{ repeat: Infinity, duration: 1.4 }}
+                className="text-xs text-muted-foreground"
+              >
+                Reading your entries…
+              </motion.p>
+            </motion.div>
+          )}
+
+          {suggestions.length > 0 && !extracting && (
+            <motion.div
+              key="suggestions"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.35 }}
+              className="space-y-3"
+            >
+              <div className="flex items-center justify-between">
+                <p className="text-label">Suggested from your entries</p>
+                <button
+                  onClick={() => { setSuggestions([]); setDismissedAll(true) }}
+                  className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Dismiss all
+                </button>
+              </div>
+              <div className="space-y-2">
+                {suggestions.map((ev, i) => (
+                  <motion.div
+                    key={i}
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: i * 0.04 }}
+                    className={`border border-border/60 rounded-lg px-4 py-3 flex items-start gap-3 transition-opacity ${acceptedIndices.has(i) ? 'opacity-40' : ''}`}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-foreground leading-snug">{ev.title}</p>
+                      {ev.year && <p className="text-[10px] text-muted-foreground mt-0.5">{ev.year}</p>}
+                      {ev.description && (
+                        <p className="text-xs text-muted-foreground leading-relaxed mt-1">{ev.description}</p>
+                      )}
+                    </div>
+                    {!acceptedIndices.has(i) && (
+                      <button
+                        onClick={() => handleAcceptSuggestion(i, ev)}
+                        disabled={isPending}
+                        className="shrink-0 text-xs text-muted-foreground border border-border rounded px-2.5 py-1 hover:text-foreground hover:border-foreground/30 transition-colors disabled:opacity-30 mt-0.5"
+                      >
+                        + Add
+                      </button>
+                    )}
+                    {acceptedIndices.has(i) && (
+                      <span className="shrink-0 text-xs text-muted-foreground mt-0.5">Added ✓</span>
+                    )}
+                  </motion.div>
+                ))}
+              </div>
+              <p className="text-[10px] text-muted-foreground">Add what&apos;s right. Skip the rest. You can always edit events manually.</p>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      )}
 
       {/* Add form — animated expand/collapse */}
       <AnimatePresence>
