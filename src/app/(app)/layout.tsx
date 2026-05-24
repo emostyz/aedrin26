@@ -30,6 +30,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <Link href="/app/interview" className="hover:text-foreground transition-colors">Capture</Link>
             <Link href="/app/review" className="hover:text-foreground transition-colors">Review</Link>
             <Link href="/app/lifemap" className="hover:text-foreground transition-colors">Life map</Link>
+            <Link href="/app/settings" className="hover:text-foreground transition-colors">Settings</Link>
+            <Link href="/app/executor" className="hover:text-foreground transition-colors">Executor</Link>
           </nav>
           <div className="flex items-center gap-4">
             <span className="text-sm text-muted-foreground hidden sm:block">{displayName}</span>
