@@ -39,7 +39,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </form>
       </NavClient>
 
-      <main className="flex-1 mx-auto w-full max-w-3xl px-6 py-12">
+      {/* pb-24 reserves space for the fixed mobile bottom nav bar */}
+      <main className="flex-1 mx-auto w-full max-w-3xl px-6 py-12 pb-24 md:pb-12">
         {children}
       </main>
     </div>

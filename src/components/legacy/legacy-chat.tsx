@@ -12,20 +12,46 @@ interface Props {
   heirName: string
 }
 
+// Typing indicator — three dots in a graceful rhythm
+function TypingIndicator() {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -4 }}
+      transition={{ duration: 0.25 }}
+      className="flex justify-start"
+    >
+      <div className="border border-border/60 bg-surface/50 rounded-2xl rounded-bl-sm px-5 py-3.5">
+        <div className="flex gap-1.5 items-center h-3">
+          {[0, 1, 2].map((i) => (
+            <motion.div
+              key={i}
+              className="w-1 h-1 rounded-full bg-muted-foreground/50"
+              animate={{ y: [0, -4, 0], opacity: [0.4, 1, 0.4] }}
+              transition={{ duration: 1.1, repeat: Infinity, delay: i * 0.18, ease: 'easeInOut' }}
+            />
+          ))}
+        </div>
+      </div>
+    </motion.div>
+  )
+}
+
 export function LegacyChat({ deceasedUserId, deceasedName, heirId, heirName }: Props) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput]       = useState('')
   const [loading, setLoading]   = useState(false)
   const [error, setError]       = useState<string | null>(null)
   const bottomRef               = useRef<HTMLDivElement>(null)
-  const inputRef                = useRef<HTMLInputElement>(null)
+  const inputRef                = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, loading])
 
-  async function send(e: React.FormEvent) {
-    e.preventDefault()
+  async function send(e?: React.FormEvent) {
+    e?.preventDefault()
     const q = input.trim()
     if (!q || loading) return
     setInput('')
@@ -50,51 +76,123 @@ export function LegacyChat({ deceasedUserId, deceasedName, heirId, heirName }: P
       setError('Could not reach the server.')
     } finally {
       setLoading(false)
-      inputRef.current?.focus()
+      setTimeout(() => inputRef.current?.focus(), 50)
     }
   }
 
+  // Send on Enter (without shift)
+  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      send()
+    }
+  }
+
+  const initials = deceasedName.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase()
+
   return (
-    <div className="flex flex-col flex-1 max-w-2xl mx-auto w-full px-6 py-8 gap-8">
-      {/* Header */}
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-0.5">
-        <p className="text-label">Legacy</p>
-        <p className="text-[1.4rem] font-light tracking-[-0.02em] text-foreground">{deceasedName}</p>
-        <p className="text-xs text-muted-foreground">Accessed by {heirName}</p>
+    <div className="flex flex-col min-h-[calc(100dvh-3.5rem)] max-w-2xl mx-auto w-full">
+
+      {/* ── Header ──────────────────────────────────────────────────── */}
+      <motion.div
+        initial={{ opacity: 0, y: -6 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.45, ease: [0.25, 0.1, 0.25, 1] }}
+        className="shrink-0 pt-10 pb-8 px-6 space-y-4 border-b border-border"
+      >
+        {/* Avatar + name */}
+        <div className="flex items-center gap-4">
+          <div className="w-11 h-11 rounded-full bg-surface border border-border flex items-center justify-center shrink-0">
+            <span className="text-sm font-light text-muted-foreground tracking-wider">{initials}</span>
+          </div>
+          <div>
+            <p className="text-label">Legacy</p>
+            <p className="text-[1.2rem] font-light tracking-[-0.02em] text-foreground leading-snug">
+              {deceasedName}
+            </p>
+          </div>
+        </div>
+
+        {/* Grounding disclaimer */}
+        <p className="text-xs text-muted-foreground/70 leading-relaxed max-w-sm">
+          Answers are drawn only from what {deceasedName.split(' ')[0]} recorded.
+          Accessed by <span className="text-muted-foreground">{heirName}</span>.
+        </p>
       </motion.div>
 
-      {/* Messages */}
-      <div className="flex-1 space-y-6 min-h-0">
-        {messages.length === 0 && (
+      {/* ── Messages ────────────────────────────────────────────────── */}
+      <div className="flex-1 overflow-y-auto px-6 py-8 space-y-5 min-h-0">
+
+        {/* Empty prompt */}
+        {messages.length === 0 && !loading && (
           <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0, transition: { delay: 0.15 } }}
-            className="border border-border rounded-lg px-5 py-8 text-center"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2, duration: 0.45 }}
+            className="flex flex-col items-center justify-center gap-4 py-16 text-center"
           >
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              Ask something you always wanted to know.<br />
-              Answers come only from what {deceasedName} recorded.
-            </p>
+            <div className="w-14 h-14 rounded-full border border-border/50 flex items-center justify-center text-muted-foreground/40">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
+                <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
+              </svg>
+            </div>
+            <div className="space-y-1.5">
+              <p className="text-sm text-foreground font-light">
+                Ask something you always wanted to know.
+              </p>
+              <p className="text-xs text-muted-foreground max-w-xs leading-relaxed">
+                Take as long as you need. There&apos;s no wrong question.
+              </p>
+            </div>
+
+            {/* Suggested questions */}
+            <div className="flex flex-wrap justify-center gap-2 pt-2">
+              {[
+                `What did ${deceasedName.split(' ')[0]} find most meaningful?`,
+                'What would they want me to remember?',
+                'What were they most proud of?',
+              ].map((q) => (
+                <button
+                  key={q}
+                  type="button"
+                  onClick={() => { setInput(q); setTimeout(() => inputRef.current?.focus(), 50) }}
+                  className="text-xs text-muted-foreground border border-border rounded-full px-3.5 py-1.5 hover:border-foreground/20 hover:text-foreground transition-all duration-200"
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
           </motion.div>
         )}
 
+        {/* Message list */}
         <AnimatePresence initial={false}>
           {messages.map((msg, i) => (
             <motion.div
               key={i}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0, transition: { duration: 0.28 } }}
+              initial={{ opacity: 0, y: 10, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
               className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
-              <div className={`max-w-[85%] rounded-lg px-4 py-3 space-y-2 ${
-                msg.role === 'user'
-                  ? 'bg-primary text-primary-foreground'
-                  : 'border border-border bg-surface text-foreground'
-              }`}>
-                <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+              {msg.role === 'assistant' && (
+                <div className="w-5 h-5 rounded-full bg-surface border border-border/60 flex items-center justify-center text-[8px] text-muted-foreground shrink-0 mr-2.5 mt-1">
+                  {initials[0]}
+                </div>
+              )}
+
+              <div className={`max-w-[82%] space-y-1.5 ${msg.role === 'user' ? 'items-end' : 'items-start'} flex flex-col`}>
+                <div className={`rounded-2xl px-4 py-3 ${
+                  msg.role === 'user'
+                    ? 'bg-foreground text-background rounded-br-sm'
+                    : 'border border-border/60 bg-surface/50 text-foreground rounded-bl-sm'
+                }`}>
+                  <p className="text-sm leading-relaxed whitespace-pre-wrap font-light">{msg.content}</p>
+                </div>
+
                 {msg.role === 'assistant' && msg.entryCount !== undefined && msg.entryCount > 0 && (
-                  <p className="text-[11px] text-muted-foreground">
-                    {msg.entryCount} recorded {msg.entryCount === 1 ? 'entry' : 'entries'} referenced
+                  <p className="text-[10px] text-muted-foreground/50 px-1">
+                    {msg.entryCount} {msg.entryCount === 1 ? 'memory' : 'memories'} referenced
                   </p>
                 )}
               </div>
@@ -102,78 +200,75 @@ export function LegacyChat({ deceasedUserId, deceasedName, heirId, heirName }: P
           ))}
         </AnimatePresence>
 
-        {loading && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="flex justify-start"
-          >
-            <div className="border border-border bg-surface rounded-lg px-4 py-3">
-              <div className="flex gap-1 items-center">
-                {[0, 1, 2].map((i) => (
-                  <motion.div
-                    key={i}
-                    className="w-1 h-1 rounded-full bg-muted-foreground"
-                    animate={{ opacity: [0.3, 1, 0.3] }}
-                    transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }}
-                  />
-                ))}
-              </div>
-            </div>
-          </motion.div>
-        )}
+        {/* Typing indicator */}
+        <AnimatePresence>
+          {loading && <TypingIndicator key="typing" />}
+        </AnimatePresence>
 
-        {error && (
-          <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-            role="alert" className="text-xs text-destructive text-center">
-            {error}
-          </motion.p>
-        )}
+        {/* Error */}
+        <AnimatePresence>
+          {error && (
+            <motion.p
+              key="error"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              role="alert"
+              className="text-xs text-destructive text-center py-2"
+            >
+              {error}
+            </motion.p>
+          )}
+        </AnimatePresence>
 
         <div ref={bottomRef} />
       </div>
 
-      {/* Input */}
-      <motion.form
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0, transition: { delay: 0.2 } }}
-        onSubmit={send}
-        className="flex gap-3 border-t border-border pt-6"
-      >
-        <input
-          ref={inputRef}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          disabled={loading}
-          placeholder="Ask something…"
-          aria-label="Your message"
-          className="flex-1 bg-input border border-border rounded-md px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring transition-all disabled:opacity-50"
-        />
-        <button
-          type="submit"
-          disabled={!input.trim() || loading}
-          className="bg-primary text-primary-foreground rounded-md px-5 py-2.5 text-xs font-medium hover:opacity-90 disabled:opacity-30 transition-opacity"
-        >
-          Send
-        </button>
-      </motion.form>
-
-      {/* §4.5 Psychological care resources */}
+      {/* ── Input ───────────────────────────────────────────────────── */}
       <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1, transition: { delay: 0.4 } }}
-        className="border-t border-border pt-4 space-y-1"
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.25, duration: 0.4 }}
+        className="shrink-0 border-t border-border px-6 py-5 space-y-4"
       >
-        <p className="text-[10px] text-muted-foreground">
+        <form onSubmit={send} className="flex items-end gap-3">
+          <textarea
+            ref={inputRef}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            disabled={loading}
+            placeholder="Ask something…"
+            rows={1}
+            aria-label="Your message"
+            className="flex-1 bg-input border border-border rounded-xl px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring transition-all disabled:opacity-50 resize-none leading-relaxed"
+            style={{ minHeight: '44px', maxHeight: '120px', overflowY: 'auto' }}
+            onInput={(e) => {
+              const el = e.currentTarget
+              el.style.height = 'auto'
+              el.style.height = `${Math.min(el.scrollHeight, 120)}px`
+            }}
+          />
+          <button
+            type="submit"
+            disabled={!input.trim() || loading}
+            className="shrink-0 bg-primary text-primary-foreground rounded-xl px-4 py-3 text-xs font-medium hover:opacity-90 disabled:opacity-30 transition-opacity h-[44px] flex items-center"
+          >
+            Send
+          </button>
+        </form>
+
+        {/* Grief support — subtle and accessible */}
+        <p className="text-[10px] text-muted-foreground/40 leading-relaxed">
           Grief support:{' '}
           <a href="https://www.griefshare.org" target="_blank" rel="noopener noreferrer"
-            className="underline underline-offset-2 hover:text-foreground transition-colors">GriefShare</a>
+            className="hover:text-muted-foreground transition-colors underline underline-offset-2">GriefShare</a>
           {' · '}
           <a href="https://www.hospicefoundation.org" target="_blank" rel="noopener noreferrer"
-            className="underline underline-offset-2 hover:text-foreground transition-colors">Hospice Foundation</a>
+            className="hover:text-muted-foreground transition-colors underline underline-offset-2">Hospice Foundation</a>
           {' · '}
           <a href="https://www.modernloss.com" target="_blank" rel="noopener noreferrer"
-            className="underline underline-offset-2 hover:text-foreground transition-colors">Modern Loss</a>
+            className="hover:text-muted-foreground transition-colors underline underline-offset-2">Modern Loss</a>
         </p>
       </motion.div>
     </div>
