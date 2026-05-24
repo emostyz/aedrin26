@@ -124,7 +124,8 @@ memorialization_requests — id, user_id, initiated_by_executor_id, status (pend
 verification_documents — id, request_id, document_url, type, uploaded_at (restricted bucket).
 legacy_access_log — id, deceased_user_id, heir_id, entry_ids_accessed (array), interaction_summary, accessed_at (append-only).
 value_summaries — id, user_id, content, approved_by_user, approved_at.
-RLS: a user reads/writes only their own soul_entries. Heirs read only shareable entries of a legacy_active user, filtered by heir_permissions. Verification docs readable only by operators/executors. Enforce in Postgres RLS, not just app code.
+life_events — id, user_id (FK), title, event_date (date, nullable), description (text, nullable), created_at, updated_at. Separate from soul_entries; carries chronological/timeline data which soul_entries has no concept of. No link to soul_entries in Phase 1 — a nullable life_event_id FK on soul_entries can be added later without rework.
+RLS: a user reads/writes only their own rows in soul_entries, life_events, and value_summaries. Heirs read only shareable entries of a legacy_active user, filtered by heir_permissions. Verification docs readable only by operators/executors. Enforce in Postgres RLS, not just app code.
 
 8. AI subsystem (multi-stage, validated, human-in-the-loop; key from env)
 8.1 Capture assist
