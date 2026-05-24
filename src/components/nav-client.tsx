@@ -12,6 +12,7 @@ const NAV_ITEMS = [
   { href: '/app/lifemap', label: 'Life map' },
   { href: '/app/values', label: 'Values' },
   { href: '/app/settings', label: 'Settings' },
+  { href: '/app/profile', label: 'Profile' },
 ]
 
 interface Props {

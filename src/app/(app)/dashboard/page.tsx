@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { FadeUp, Stagger, StaggerItem } from '@/components/ui/motion'
+import { ReflectionPrompt } from '@/components/dashboard/reflection-prompt'
 import type { Domain } from '@/lib/supabase/types'
 
 const DOMAINS: { domain: Domain; label: string }[] = [
@@ -21,15 +22,27 @@ export default async function DashboardPage() {
 
   const service = createServiceClient()
 
-  const [entriesResult, profileResult, legacyResult] = await Promise.all([
+  const [entriesResult, profileResult, legacyResult, promptsResult] = await Promise.all([
     supabase.from('soul_entries').select('id, domain').eq('user_id', user.id),
     supabase.from('users').select('account_state, legal_name').eq('id', user.id).single(),
     service.from('heirs').select('id, user_id').eq('email', user.email!.toLowerCase()).eq('access_status', 'active'),
+    supabase.from('interview_prompts').select('id, domain, text').eq('active', true).limit(20),
   ])
 
   const entries = (entriesResult.data ?? []) as { id: string; domain: Domain }[]
   const profile = profileResult.data as { account_state: string; legal_name: string } | null
   const legacyHeirs = (legacyResult.data ?? []) as { id: string; user_id: string }[]
+  const allPrompts = (promptsResult.data ?? []) as { id: string; domain: string; text: string }[]
+
+  // Surfaces prompts from domains with fewest entries (most room for reflection)
+  const countByDomainMap = entries.reduce<Record<string, number>>((acc, e) => {
+    acc[e.domain] = (acc[e.domain] ?? 0) + 1
+    return acc
+  }, {})
+  const reflectionPrompts = allPrompts
+    .filter((p) => (countByDomainMap[p.domain] ?? 0) < 3)
+    .sort(() => Math.random() - 0.5)
+    .slice(0, 5)
 
   const countByDomain = entries.reduce<Record<string, number>>((acc, e) => {
     acc[e.domain] = (acc[e.domain] ?? 0) + 1
@@ -85,6 +98,13 @@ export default async function DashboardPage() {
               </Link>
             </p>
           </div>
+        </FadeUp>
+      )}
+
+      {/* Reflection prompt */}
+      {reflectionPrompts.length > 0 && (
+        <FadeUp delay={0.05}>
+          <ReflectionPrompt prompts={reflectionPrompts} />
         </FadeUp>
       )}
 

@@ -1,4 +1,4 @@
-// Hand-written types matching 001_phase1.sql.
+// Hand-written types matching 001–004 migrations.
 // Replace with generated types once you run: npx supabase gen types typescript
 
 export type AccountState = 'active' | 'memorializing' | 'legacy_active'
@@ -122,6 +122,29 @@ export interface Database {
           updated_at?: string
         }
         Update: Partial<Database['public']['Tables']['life_events']['Insert']>
+      }
+      channel_partners: {
+        Row: {
+          id: string
+          name: string
+          type: 'estate_attorney' | 'hospice' | 'funeral_home' | 'other'
+          contact_email: string | null
+          website_url: string | null
+          active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          type: 'estate_attorney' | 'hospice' | 'funeral_home' | 'other'
+          contact_email?: string | null
+          website_url?: string | null
+          active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['channel_partners']['Insert']>
       }
     }
   }
