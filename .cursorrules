@@ -1,0 +1,49 @@
+# AEDRIN — Cursor Rules
+
+## Source of truth
+- PRD.md is authoritative. Build only what it specifies. If a request conflicts with PRD.md, say so.
+- Build in PRD.md §11 phase order. Do not start a phase until the prior phase's acceptance criteria pass.
+
+## When unsure
+- If a requirement is ambiguous, STOP and ask. Do NOT guess or invent behavior.
+- Before any large feature, write a plan (files to create/modify, in order) and wait for approval. Do not write code until the plan is approved.
+
+## Workspace cleanliness (hard rule)
+- This repository contains exactly ONE project at the root. There is never a project nested inside it.
+- NEVER scaffold a new app, starter, or boilerplate inside this repo (no create-next-app, no temp-* folders, no nested project directories). If a fresh scaffold is ever needed, STOP and ask me — I will handle it outside this repo.
+- When replacing or rewriting a module, edit the existing files in place. Do NOT create a parallel "v2"/"new"/"copy" version alongside the old one.
+- If a file or folder is genuinely obsolete, do not delete it silently. List what you believe is dead, explain why, and ask for confirmation before removing anything.
+- Never delete or overwrite working code to "start fresh" without my explicit approval.
+
+## Stack & structure
+- Next.js App Router, TypeScript, Tailwind, shadcn/ui, Supabase (@supabase/ssr — NOT auth-helpers).
+- ONE app directory: src/app. Never create a second/parallel app tree or temp-* project.
+- One UI component per file, lowercase filenames, named exports, consistent imports. Never create casing-duplicate files (Button.tsx AND button.tsx).
+- Server components using cookies() must await per Next.js conventions.
+- Every page file must export a valid default component.
+- CSS @import rules go at the top of the stylesheet, before all other rules.
+
+## Secrets
+- All secrets via process.env. NEVER hardcode keys. OPENAI_API_KEY is read from env in 100% of files.
+
+## Database & security
+- Set up Supabase schema and Row Level Security BEFORE building UI for any data feature.
+- A user reads/writes only their own data. Enforce in Postgres RLS, not just app code.
+
+## Git discipline
+- After each working feature, suggest a commit with a clear message. Working code should be committed before starting the next feature so a bad change can be reverted in one step.
+
+## Definition of done
+- A feature is done only when: happy path works, plus error/loading/empty states exist.
+- After each feature: run `npm run build` AND load every affected route in the browser. "Compiles" ≠ "works."
+- Clear .next cache after renaming files.
+
+## AEDRIN-specific hard constraints (PRD §9 — never violate)
+- The legacy identity NEVER makes decisions or claims authority over money/legal/medical/inheritance — redirect to a human professional.
+- It answers ONLY from captured material. Off-corpus questions get an honest "not recorded" — never confabulate.
+- It never claims to be the person, conscious, or sentient. Persistent AI-representation disclosure.
+- No heir access before a completed death-verification workflow. No path flips legacy access on a boolean.
+- Default sharing status for all captured material is private. Sharing is opt-in.
+
+## Style
+- Calm, dignified, high-contrast, restrained. Generous whitespace, serious typography, muted palette. NOT a neon/gradient SaaS dashboard.
