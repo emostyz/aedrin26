@@ -28,7 +28,8 @@ export async function signup(_prevState: AuthState, formData: FormData): Promise
     return { error: error.message }
   }
 
-  redirect('/app/dashboard')
+  // New users start with onboarding; the onboarding flow redirects to /app/dashboard on completion.
+  redirect('/onboarding')
 }
 
 export async function login(_prevState: AuthState, formData: FormData): Promise<AuthState> {

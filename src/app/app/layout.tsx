@@ -11,11 +11,22 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   const { data: profileData } = await supabase
     .from('users')
-    .select('legal_name, display_name')
+    .select('legal_name, display_name, onboarding_complete')
     .eq('id', user.id)
     .single()
 
-  const profile = profileData as { legal_name: string; display_name: string | null } | null
+  const profile = profileData as {
+    legal_name: string
+    display_name: string | null
+    onboarding_complete: boolean
+  } | null
+
+  // Redirect to onboarding if intake not yet completed.
+  // The /onboarding route lives outside this layout, so no loop risk.
+  if (profile && !profile.onboarding_complete) {
+    redirect('/onboarding')
+  }
+
   const displayName = profile?.display_name ?? profile?.legal_name ?? 'Account'
 
   return (

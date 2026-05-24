@@ -1,10 +1,18 @@
-// Hand-written types matching 001–004 migrations.
+// Hand-written types matching 001–005 migrations.
 // Replace with generated types once you run: npx supabase gen types typescript
 
 export type AccountState = 'active' | 'memorializing' | 'legacy_active'
 export type Domain = 'childhood' | 'family' | 'career' | 'values' | 'beliefs' | 'lessons' | 'messages' | 'other'
 export type SharingStatus = 'private' | 'shareable'
 export type EntrySource = 'typed' | 'voice' | 'uploaded'
+export type RelationshipStatus = 'single' | 'partnered' | 'married' | 'separated' | 'widowed' | 'other'
+
+export interface FollowUpQuestion {
+  text: string
+  type: 'freeform' | 'choice'
+  options?: string[]   // 2–5 options, only when type === 'choice'
+  placeholder?: string // hint text, only when type === 'freeform'
+}
 
 export interface Database {
   public: {
@@ -22,6 +30,12 @@ export interface Database {
           dob: string | null
           photo_url: string | null
           account_state: AccountState
+          relationship_status: RelationshipStatus | null
+          location: string | null
+          life_description: string | null
+          biggest_regret: string | null
+          life_purpose: string | null
+          onboarding_complete: boolean
           created_at: string
           updated_at: string
         }
@@ -33,10 +47,39 @@ export interface Database {
           dob?: string | null
           photo_url?: string | null
           account_state?: AccountState
+          relationship_status?: RelationshipStatus | null
+          location?: string | null
+          life_description?: string | null
+          biggest_regret?: string | null
+          life_purpose?: string | null
+          onboarding_complete?: boolean
           created_at?: string
           updated_at?: string
         }
         Update: Partial<Database['public']['Tables']['users']['Insert']>
+      }
+      daily_prompts: {
+        Row: {
+          id: string
+          user_id: string
+          prompt_text: string
+          domain: Domain
+          rationale: string
+          delivered_date: string
+          soul_entry_id: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          prompt_text: string
+          domain: Domain
+          rationale: string
+          delivered_date: string
+          soul_entry_id?: string | null
+          created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['daily_prompts']['Insert']>
       }
       interview_prompts: {
         Row: {

@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { InterviewDomain } from '@/components/interview/interview-domain'
+import { getOrCreateTodaysPrompt } from '@/app/actions/daily-prompt'
 import type { Database, Domain } from '@/lib/supabase/types'
 
 type Prompt = Database['public']['Tables']['interview_prompts']['Row']
@@ -33,22 +34,30 @@ export default async function InterviewDomainPage({ params }: Props) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
 
-  const { data: promptsData } = await supabase
-    .from('interview_prompts')
-    .select('*')
-    .eq('domain', domain)
-    .eq('active', true)
-    .order('ord', { ascending: true })
+  const [promptsResult, entriesResult, todayResult] = await Promise.all([
+    supabase
+      .from('interview_prompts')
+      .select('*')
+      .eq('domain', domain)
+      .eq('active', true)
+      .order('ord', { ascending: true }),
+    supabase
+      .from('soul_entries')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('domain', domain)
+      .order('created_at', { ascending: false }),
+    getOrCreateTodaysPrompt(),
+  ])
 
-  const { data: entriesData } = await supabase
-    .from('soul_entries')
-    .select('*')
-    .eq('user_id', user.id)
-    .eq('domain', domain)
-    .order('created_at', { ascending: false })
+  const prompts = (promptsResult.data ?? []) as Prompt[]
+  const existingEntries = (entriesResult.data ?? []) as SoulEntry[]
 
-  const prompts = (promptsData ?? []) as Prompt[]
-  const existingEntries = (entriesData ?? []) as SoulEntry[]
+  // Expose the daily prompt if it's in this domain
+  const dailyPrompt =
+    todayResult.prompt?.domain === domain
+      ? { id: todayResult.prompt.id, prompt_text: todayResult.prompt.prompt_text }
+      : null
 
   return (
     <InterviewDomain
@@ -56,6 +65,7 @@ export default async function InterviewDomainPage({ params }: Props) {
       label={DOMAIN_LABELS[domain]}
       prompts={prompts}
       existingEntries={existingEntries}
+      dailyPrompt={dailyPrompt}
     />
   )
 }

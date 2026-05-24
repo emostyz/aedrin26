@@ -2,7 +2,8 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { FadeUp, Stagger, StaggerItem } from '@/components/ui/motion'
-import { ReflectionPrompt } from '@/components/dashboard/reflection-prompt'
+import { TodayPrompt } from '@/components/dashboard/today-prompt'
+import { getOrCreateTodaysPrompt } from '@/app/actions/daily-prompt'
 import type { Domain } from '@/lib/supabase/types'
 
 const DOMAINS: { domain: Domain; label: string }[] = [
@@ -22,27 +23,18 @@ export default async function DashboardPage() {
 
   const service = createServiceClient()
 
-  const [entriesResult, profileResult, legacyResult, promptsResult] = await Promise.all([
+  // Run all data fetches in parallel, including today's daily prompt generation
+  const [entriesResult, profileResult, legacyResult, todayPromptResult] = await Promise.all([
     supabase.from('soul_entries').select('id, domain').eq('user_id', user.id),
-    supabase.from('users').select('account_state, legal_name').eq('id', user.id).single(),
+    supabase.from('users').select('account_state, legal_name, display_name').eq('id', user.id).single(),
     service.from('heirs').select('id, user_id').eq('email', user.email!.toLowerCase()).eq('access_status', 'active'),
-    supabase.from('interview_prompts').select('id, domain, text').eq('active', true).limit(20),
+    getOrCreateTodaysPrompt(),
   ])
 
   const entries = (entriesResult.data ?? []) as { id: string; domain: Domain }[]
-  const profile = profileResult.data as { account_state: string; legal_name: string } | null
+  const profile = profileResult.data as { account_state: string; legal_name: string; display_name: string | null } | null
   const legacyHeirs = (legacyResult.data ?? []) as { id: string; user_id: string }[]
-  const allPrompts = (promptsResult.data ?? []) as { id: string; domain: string; text: string }[]
-
-  // Surfaces prompts from domains with fewest entries (most room for reflection)
-  const countByDomainMap = entries.reduce<Record<string, number>>((acc, e) => {
-    acc[e.domain] = (acc[e.domain] ?? 0) + 1
-    return acc
-  }, {})
-  const reflectionPrompts = allPrompts
-    .filter((p) => (countByDomainMap[p.domain] ?? 0) < 3)
-    .sort(() => Math.random() - 0.5)
-    .slice(0, 5)
+  const todayPrompt = todayPromptResult.prompt
 
   const countByDomain = entries.reduce<Record<string, number>>((acc, e) => {
     acc[e.domain] = (acc[e.domain] ?? 0) + 1
@@ -63,9 +55,10 @@ export default async function DashboardPage() {
   }
 
   const isMemoralizing = profile?.account_state === 'memorializing'
+  const firstName = (profile?.display_name ?? profile?.legal_name ?? '').split(' ')[0]
 
   return (
-    <div className="space-y-16">
+    <div className="space-y-14">
       {/* Legacy access */}
       {legacyAccess.length > 0 && (
         <FadeUp>
@@ -101,21 +94,48 @@ export default async function DashboardPage() {
         </FadeUp>
       )}
 
-      {/* Reflection prompt */}
-      {reflectionPrompts.length > 0 && (
-        <FadeUp delay={0.05}>
-          <ReflectionPrompt prompts={reflectionPrompts} />
+      {/* Greeting + daily prompt */}
+      <div className="space-y-6">
+        <FadeUp>
+          <div className="space-y-1">
+            <p className="text-label">
+              {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+            </p>
+            <p className="text-[1.75rem] font-light tracking-[-0.03em] text-foreground leading-tight">
+              {firstName ? `Good to see you, ${firstName}.` : 'Good to see you.'}
+            </p>
+          </div>
         </FadeUp>
-      )}
 
-      {/* Soul Profile header */}
-      <FadeUp>
+        <FadeUp delay={0.05}>
+          {todayPrompt ? (
+            <TodayPrompt
+              promptId={todayPrompt.id}
+              promptText={todayPrompt.prompt_text}
+              domain={todayPrompt.domain}
+            />
+          ) : (
+            <div className="border border-border rounded-xl p-6 space-y-3">
+              <p className="text-label">Today&apos;s reflection</p>
+              <p className="text-sm text-muted-foreground">
+                Your personalized prompt is being prepared.{' '}
+                <Link href="/app/interview/childhood" className="text-foreground underline underline-offset-4">
+                  Browse topics →
+                </Link>
+              </p>
+            </div>
+          )}
+        </FadeUp>
+      </div>
+
+      {/* Soul Profile */}
+      <FadeUp delay={0.1}>
         <div className="space-y-1">
-          <p className="text-label">Soul Profile</p>
-          <p className="text-[2rem] font-light tracking-[-0.03em] text-foreground leading-tight">
+          <p className="text-label">Your soul profile</p>
+          <p className="text-[1.5rem] font-light tracking-[-0.03em] text-foreground leading-tight">
             {totalEntries === 0
-              ? 'Begin capturing your life.'
-              : `${totalEntries} ${totalEntries === 1 ? 'entry' : 'entries'}.`}
+              ? 'No entries yet.'
+              : `${totalEntries} ${totalEntries === 1 ? 'memory' : 'memories'} captured.`}
           </p>
         </div>
       </FadeUp>
@@ -132,7 +152,7 @@ export default async function DashboardPage() {
               >
                 <p className="text-sm text-foreground">{label}</p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  {count === 0 ? '—' : count}
+                  {count === 0 ? '—' : `${count} saved`}
                 </p>
               </Link>
             </StaggerItem>
@@ -141,13 +161,13 @@ export default async function DashboardPage() {
       </Stagger>
 
       {/* Quick links */}
-      <FadeUp delay={0.3}>
+      <FadeUp delay={0.25}>
         <div className="flex flex-wrap gap-6 text-xs text-muted-foreground">
           <Link href="/app/review" className="hover:text-foreground transition-colors">Review entries</Link>
           <Link href="/app/lifemap" className="hover:text-foreground transition-colors">Life map</Link>
           <Link href="/app/values" className="hover:text-foreground transition-colors">Values</Link>
           <Link href="/app/settings" className="hover:text-foreground transition-colors">Heirs & executors</Link>
-          <Link href="/app/export" className="hover:text-foreground transition-colors">Export data</Link>
+          <Link href="/app/export" className="hover:text-foreground transition-colors">Export</Link>
         </div>
       </FadeUp>
     </div>

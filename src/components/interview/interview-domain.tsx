@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { saveEntry } from '@/app/actions/entries'
 import { suggestFollowUps } from '@/app/actions/ai'
 import { motion, AnimatePresence, Stagger, StaggerItem } from '@/components/ui/motion'
-import type { Domain, Database } from '@/lib/supabase/types'
+import type { Domain, Database, FollowUpQuestion } from '@/lib/supabase/types'
 
 type Prompt = Database['public']['Tables']['interview_prompts']['Row']
 type Entry  = Database['public']['Tables']['soul_entries']['Row']
@@ -15,6 +15,7 @@ interface Props {
   label: string
   prompts: Prompt[]
   existingEntries: Entry[]
+  dailyPrompt?: { id: string; prompt_text: string } | null
 }
 
 declare global {
@@ -52,15 +53,152 @@ type SpeechRecognitionResult = {
 
 type SpeechRecognitionAlternative = { transcript: string }
 
-export function InterviewDomain({ domain, label, prompts, existingEntries }: Props) {
+// ── Follow-up Question UI ──────────────────────────────────────────────────────
+
+function FollowUpCard({
+  question,
+  onSave,
+  onDismiss,
+  isPending,
+}: {
+  question: FollowUpQuestion
+  onSave: (text: string) => void
+  onDismiss: () => void
+  isPending: boolean
+}) {
+  const [freeformValue, setFreeformValue] = useState('')
+  const [choiceValue, setChoiceValue]     = useState<string | null>(null)
+  const [choiceOther, setChoiceOther]     = useState('')
+  const [showOther, setShowOther]         = useState(false)
+
+  function handleSave() {
+    if (question.type === 'freeform') {
+      if (!freeformValue.trim()) return
+      onSave(`${question.text}\n\n${freeformValue.trim()}`)
+    } else {
+      const val = showOther ? choiceOther.trim() : choiceValue
+      if (!val) return
+      onSave(`${question.text}\n\n${val}`)
+    }
+  }
+
+  const canSave =
+    question.type === 'freeform'
+      ? freeformValue.trim().length > 0
+      : showOther
+        ? choiceOther.trim().length > 0
+        : choiceValue !== null
+
+  return (
+    <div className="border border-border rounded-xl p-5 space-y-4">
+      <p className="text-sm text-foreground leading-relaxed font-light">{question.text}</p>
+
+      {question.type === 'freeform' ? (
+        <textarea
+          autoFocus
+          value={freeformValue}
+          onChange={(e) => setFreeformValue(e.target.value)}
+          placeholder={question.placeholder ?? 'Write your response…'}
+          rows={3}
+          className="w-full bg-input border border-border rounded-lg px-3.5 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-none transition-all"
+        />
+      ) : (
+        <div className="space-y-3">
+          <div className="flex flex-wrap gap-2">
+            {(question.options ?? []).map((opt) => (
+              <motion.button
+                key={opt}
+                onClick={() => { setChoiceValue(opt); setShowOther(false) }}
+                whileTap={{ scale: 0.96 }}
+                className={`px-3.5 py-2 rounded-full text-xs border transition-all duration-200 ${
+                  choiceValue === opt && !showOther
+                    ? 'border-foreground bg-foreground text-background'
+                    : 'border-border text-muted-foreground hover:border-foreground/30 hover:text-foreground'
+                }`}
+              >
+                {opt}
+              </motion.button>
+            ))}
+            <motion.button
+              onClick={() => { setShowOther(true); setChoiceValue(null) }}
+              whileTap={{ scale: 0.96 }}
+              className={`px-3.5 py-2 rounded-full text-xs border transition-all duration-200 ${
+                showOther
+                  ? 'border-foreground bg-foreground text-background'
+                  : 'border-border text-muted-foreground hover:border-foreground/30 hover:text-foreground'
+              }`}
+            >
+              Other…
+            </motion.button>
+          </div>
+
+          <AnimatePresence>
+            {showOther && (
+              <motion.input
+                key="other-input"
+                autoFocus
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.22 }}
+                value={choiceOther}
+                onChange={(e) => setChoiceOther(e.target.value)}
+                placeholder="Tell me more…"
+                className="w-full bg-input border border-border rounded-md px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring transition-all"
+              />
+            )}
+          </AnimatePresence>
+        </div>
+      )}
+
+      <div className="flex items-center gap-3">
+        <button
+          onClick={handleSave}
+          disabled={!canSave || isPending}
+          className="bg-primary text-primary-foreground rounded-md px-3.5 py-1.5 text-xs font-medium hover:opacity-90 disabled:opacity-30 transition-opacity"
+        >
+          {isPending ? 'Saving…' : 'Save'}
+        </button>
+        <button
+          onClick={onDismiss}
+          className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+        >
+          Skip
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ── Main Component ─────────────────────────────────────────────────────────────
+
+export function InterviewDomain({ domain, label, prompts, existingEntries, dailyPrompt }: Props) {
+  // Merge daily prompt at the front if present and not already in prompts
+  const effectivePrompts = (() => {
+    if (!dailyPrompt) return prompts
+    const isDuplicate = prompts.some((p) => p.id === dailyPrompt.id)
+    if (isDuplicate) return prompts
+    const synthetic = {
+      id: dailyPrompt.id,
+      domain,
+      text: dailyPrompt.prompt_text,
+      version: 1,
+      ord: 0,
+      active: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    } satisfies Prompt
+    return [synthetic, ...prompts]
+  })()
+
   const [promptIndex, setPromptIndex]       = useState(0)
   const [direction, setDirection]           = useState<'forward' | 'back'>('forward')
   const [entries, setEntries]               = useState<Entry[]>(existingEntries)
   const [content, setContent]               = useState('')
   const [error, setError]                   = useState<string | null>(null)
   const [savedBrief, setSavedBrief]         = useState(false)
-  const [suggestions, setSuggestions]       = useState<string[]>([])
-  const [loadingSugg, setLoadingSugg]       = useState(false)
+  const [followUps, setFollowUps]           = useState<FollowUpQuestion[]>([])
+  const [loadingFollowUps, setLoadingFollowUps] = useState(false)
   const [isListening, setIsListening]       = useState(false)
   const [voiceSupported, setVoiceSupported] = useState(false)
   const [uploadedFile, setUploadedFile]     = useState<{ name: string; url: string } | null>(null)
@@ -68,22 +206,22 @@ export function InterviewDomain({ domain, label, prompts, existingEntries }: Pro
   const [isPending, startTransition]        = useTransition()
   const recognitionRef                      = useRef<SpeechRecognition | null>(null)
   const fileInputRef                        = useRef<HTMLInputElement>(null)
-  const textareaRef                         = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
     const SR = window.SpeechRecognition ?? window.webkitSpeechRecognition
     setVoiceSupported(!!SR)
   }, [])
 
-  const currentPrompt = prompts[promptIndex] ?? null
-  const hasNext = promptIndex < prompts.length - 1
+  const currentPrompt = effectivePrompts[promptIndex] ?? null
+  const hasNext = promptIndex < effectivePrompts.length - 1
   const hasPrev = promptIndex > 0
+  const isDaily = dailyPrompt && currentPrompt?.id === dailyPrompt.id
 
   function advance(dir: 'forward' | 'back') {
     setDirection(dir)
     setPromptIndex((i) => dir === 'forward' ? i + 1 : i - 1)
     setContent('')
-    setSuggestions([])
+    setFollowUps([])
     setSavedBrief(false)
     setError(null)
     setUploadedFile(null)
@@ -151,24 +289,33 @@ export function InterviewDomain({ domain, label, prompts, existingEntries }: Pro
         created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
       }, ...prev])
       setContent('')
-      setSuggestions([])
+      setFollowUps([])
       setUploadedFile(null)
       setSavedBrief(true)
       setTimeout(() => setSavedBrief(false), 2000)
     })
   }
 
-  async function handleSuggest() {
+  async function handleDeepen() {
     if (!content.trim()) return
-    setLoadingSugg(true)
-    setSuggestions([])
+    setLoadingFollowUps(true)
+    setFollowUps([])
     const result = await suggestFollowUps(domain, content.trim())
-    setSuggestions(result)
-    setLoadingSugg(false)
+    setFollowUps(result)
+    setLoadingFollowUps(false)
+  }
+
+  function dismissFollowUp(index: number) {
+    setFollowUps((prev) => prev.filter((_, i) => i !== index))
+  }
+
+  function saveFollowUp(index: number, text: string) {
+    doSave(text)
+    setFollowUps((prev) => prev.filter((_, i) => i !== index))
   }
 
   return (
-    <div className="space-y-16">
+    <div className="space-y-14">
       {/* Breadcrumb */}
       <motion.div
         initial={{ opacity: 0 }}
@@ -178,20 +325,31 @@ export function InterviewDomain({ domain, label, prompts, existingEntries }: Pro
         <Link href="/app/interview" className="hover:text-foreground transition-colors">Capture</Link>
         <span>/</span>
         <span className="text-foreground">{label}</span>
+        {isDaily && (
+          <>
+            <span>/</span>
+            <span className="text-foreground">Today</span>
+          </>
+        )}
       </motion.div>
 
       {/* Question */}
-      {currentPrompt && (
+      {currentPrompt ? (
         <div className="space-y-10">
           <AnimatePresence mode="wait" initial={false}>
             <motion.div
               key={`${promptIndex}-${direction}`}
-              initial={{ opacity: 0, x: direction === 'forward' ? 24 : -24 }}
-              animate={{ opacity: 1, x: 0, transition: { duration: 0.32, ease: [0.25, 0.1, 0.25, 1] } }}
-              exit={{ opacity: 0, x: direction === 'forward' ? -24 : 24, transition: { duration: 0.2 } }}
+              initial={{ opacity: 0, x: direction === 'forward' ? 28 : -28 }}
+              animate={{ opacity: 1, x: 0, transition: { duration: 0.35, ease: [0.25, 0.1, 0.25, 1] } }}
+              exit={{ opacity: 0, x: direction === 'forward' ? -28 : 28, transition: { duration: 0.22 } }}
               className="space-y-3"
             >
-              <p className="text-label">{promptIndex + 1} / {prompts.length}</p>
+              {isDaily && (
+                <p className="text-label">Today&apos;s reflection</p>
+              )}
+              {!isDaily && (
+                <p className="text-label">{promptIndex + 1} / {effectivePrompts.length}</p>
+              )}
               <p className="text-[1.2rem] font-light leading-relaxed text-foreground tracking-[-0.01em]">
                 {currentPrompt.text}
               </p>
@@ -205,7 +363,6 @@ export function InterviewDomain({ domain, label, prompts, existingEntries }: Pro
             className="space-y-3"
           >
             <textarea
-              ref={textareaRef}
               value={content}
               onChange={(e) => { setContent(e.target.value); setSavedBrief(false) }}
               placeholder={isListening ? 'Listening…' : 'Write your response…'}
@@ -214,7 +371,6 @@ export function InterviewDomain({ domain, label, prompts, existingEntries }: Pro
               className="w-full bg-input border border-border rounded-lg px-4 py-3.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-none transition-all"
             />
 
-            {/* Uploaded file badge */}
             {uploadedFile && (
               <motion.div
                 initial={{ opacity: 0, y: 4 }}
@@ -252,6 +408,23 @@ export function InterviewDomain({ domain, label, prompts, existingEntries }: Pro
                 {isPending ? 'Saving…' : 'Save'}
               </button>
 
+              <button
+                onClick={handleDeepen}
+                disabled={!content.trim() || loadingFollowUps || isPending}
+                className="rounded-md px-4 py-2 text-xs border border-border text-muted-foreground hover:text-foreground hover:border-foreground/20 disabled:opacity-40 transition-colors"
+              >
+                {loadingFollowUps ? (
+                  <span className="flex items-center gap-1.5">
+                    <motion.span
+                      animate={{ opacity: [0.4, 1, 0.4] }}
+                      transition={{ repeat: Infinity, duration: 1.4 }}
+                    >
+                      Deepening…
+                    </motion.span>
+                  </span>
+                ) : 'Deepen →'}
+              </button>
+
               {voiceSupported && (
                 <button
                   onClick={isListening ? stopListening : startListening}
@@ -276,44 +449,46 @@ export function InterviewDomain({ domain, label, prompts, existingEntries }: Pro
                 accept="image/*,application/pdf,audio/*"
                 onChange={handleFileUpload}
               />
-
-              <button
-                onClick={handleSuggest}
-                disabled={!content.trim() || loadingSugg || isPending}
-                className="rounded-md px-4 py-2 text-xs border border-border text-muted-foreground hover:text-foreground hover:border-foreground/20 disabled:opacity-40 transition-colors"
-              >
-                {loadingSugg ? 'Thinking…' : 'Follow-ups'}
-              </button>
             </div>
           </motion.div>
 
-          {/* AI suggestions */}
+          {/* Follow-up questions — the buttery UX */}
           <AnimatePresence>
-            {suggestions.length > 0 && (
+            {followUps.length > 0 && (
               <motion.div
-                initial={{ opacity: 0, y: 8 }}
+                initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                className="space-y-3"
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.35, ease: [0.25, 0.1, 0.25, 1] }}
+                className="space-y-4"
               >
-                <p className="text-label">Suggested follow-ups</p>
-                <Stagger className="space-y-2">
-                  {suggestions.map((s, i) => (
-                    <StaggerItem key={i}>
-                      <div className="flex items-start justify-between gap-4 border border-border rounded-lg px-4 py-3">
-                        <p className="text-sm text-foreground leading-relaxed flex-1">{s}</p>
-                        <button
-                          onClick={() => { doSave(s); setSuggestions((p) => p.filter((_, j) => j !== i)) }}
-                          disabled={isPending}
-                          className="text-xs text-muted-foreground hover:text-foreground transition-colors shrink-0 disabled:opacity-40"
-                        >
-                          Save
-                        </button>
-                      </div>
+                <div className="flex items-center gap-3">
+                  <p className="text-label">Go deeper</p>
+                  <div className="flex-1 h-px bg-border" />
+                  <button
+                    onClick={() => setFollowUps([])}
+                    className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    Dismiss all
+                  </button>
+                </div>
+
+                <Stagger className="space-y-3">
+                  {followUps.map((q, i) => (
+                    <StaggerItem key={`${i}-${q.text.slice(0, 20)}`}>
+                      <FollowUpCard
+                        question={q}
+                        onSave={(text) => saveFollowUp(i, text)}
+                        onDismiss={() => dismissFollowUp(i)}
+                        isPending={isPending}
+                      />
                     </StaggerItem>
                   ))}
                 </Stagger>
-                <p className="text-xs text-muted-foreground">Accept or ignore — never auto-saved.</p>
+
+                <p className="text-xs text-muted-foreground">
+                  Answer what resonates — skip the rest.
+                </p>
               </motion.div>
             )}
           </AnimatePresence>
@@ -333,17 +508,22 @@ export function InterviewDomain({ domain, label, prompts, existingEntries }: Pro
             {hasNext && (
               <button onClick={() => advance('forward')}
                 className="text-xs text-muted-foreground hover:text-foreground transition-colors ml-auto">
-                Skip →
+                Next →
               </button>
             )}
           </motion.div>
         </div>
-      )}
-
-      {!currentPrompt && (
+      ) : (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-          className="border border-border rounded-lg px-5 py-10 text-center">
-          <p className="text-sm text-muted-foreground">No prompts available for this domain.</p>
+          className="border border-border rounded-lg px-5 py-10 text-center space-y-3">
+          <p className="text-sm text-muted-foreground">No prompts available yet for this domain.</p>
+          <p className="text-xs text-muted-foreground">
+            Complete your{' '}
+            <Link href="/onboarding" className="text-foreground underline underline-offset-4">
+              profile
+            </Link>{' '}
+            to receive personalized daily questions.
+          </p>
         </motion.div>
       )}
 
