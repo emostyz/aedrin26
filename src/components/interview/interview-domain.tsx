@@ -140,11 +140,18 @@ function FollowUpCard({
 // ── Main Component ─────────────────────────────────────────────────────────────
 
 export function InterviewDomain({ domain, label, prompts, existingEntries, dailyPrompt, profileContext }: Props) {
-  // Merge daily prompt at the front if present and not already in prompts
+  // Merge daily prompt at the front ONLY if it hasn't been answered yet.
+  // Check both: (a) not a dup of a static prompt, (b) no existing entry has
+  // daily_prompt_id pointing to this prompt (i.e. user answered it elsewhere,
+  // e.g. on the dashboard Today's reflection card).
   const effectivePrompts = (() => {
     if (!dailyPrompt) return prompts
     const isDuplicate = prompts.some((p) => p.id === dailyPrompt.id)
     if (isDuplicate) return prompts
+    const alreadyAnswered = existingEntries.some(
+      (e) => (e as Entry & { daily_prompt_id?: string | null }).daily_prompt_id === dailyPrompt.id
+    )
+    if (alreadyAnswered) return prompts
     const synthetic = {
       id: dailyPrompt.id,
       domain,

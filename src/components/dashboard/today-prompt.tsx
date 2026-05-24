@@ -30,13 +30,6 @@ function FollowUpCard({
   const [choiceValue, setChoiceValue]     = useState<string | null>(null)
   const [showOther, setShowOther]         = useState(false)
   const [otherValue, setOtherValue]       = useState('')
-  const [transcript, setTranscript]       = useState('')
-
-  // Merge voice transcript into freeform field
-  function handleTranscript(t: string) {
-    setTranscript(t)
-    setFreeformValue(t)
-  }
 
   function handleSave() {
     if (question.type === 'freeform') {
@@ -68,7 +61,7 @@ function FollowUpCard({
             rows={3}
             className="w-full bg-input border border-border rounded-lg px-3.5 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-none transition-all"
           />
-          <SoundwaveRecorder onTranscript={handleTranscript} canvasHeight={32} />
+          <SoundwaveRecorder onTranscript={(t) => setFreeformValue(t)} canvasHeight={32} />
         </div>
       ) : (
         <div className="space-y-3">
@@ -118,10 +111,7 @@ function FollowUpCard({
                   placeholder="Tell me more…"
                   className="w-full bg-input border border-border rounded-md px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring transition-all"
                 />
-                <SoundwaveRecorder
-                  onTranscript={(t) => setOtherValue(t)}
-                  canvasHeight={28}
-                />
+                <SoundwaveRecorder onTranscript={(t) => setOtherValue(t)} canvasHeight={28} />
               </motion.div>
             )}
           </AnimatePresence>
@@ -214,7 +204,7 @@ export function TodayPrompt({ promptId, promptText, domain }: TodayPromptProps) 
         </span>
       </div>
 
-      {/* Prompt / confirmation */}
+      {/* Prompt text / saved confirmation */}
       <AnimatePresence mode="wait">
         {phase !== 'saved' ? (
           <motion.p
@@ -228,17 +218,15 @@ export function TodayPrompt({ promptId, promptText, domain }: TodayPromptProps) 
             {promptText}
           </motion.p>
         ) : (
-          <motion.div
+          <motion.p
             key="saved"
             initial={{ opacity: 0, scale: 0.97 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.35 }}
-            className="space-y-2"
+            className="text-sm font-light text-muted-foreground italic leading-relaxed line-clamp-4"
           >
-            <p className="text-sm font-light text-muted-foreground italic leading-relaxed line-clamp-4">
-              &ldquo;{savedContent}&rdquo;
-            </p>
-          </motion.div>
+            &ldquo;{savedContent}&rdquo;
+          </motion.p>
         )}
       </AnimatePresence>
 
@@ -262,7 +250,6 @@ export function TodayPrompt({ promptId, promptText, domain }: TodayPromptProps) 
               className="w-full bg-input border border-border rounded-lg px-4 py-3.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-none transition-all"
             />
 
-            {/* Voice input */}
             <SoundwaveRecorder
               onTranscript={(t) => setContent(t)}
               disabled={isPending}
@@ -292,7 +279,7 @@ export function TodayPrompt({ promptId, promptText, domain }: TodayPromptProps) 
         )}
       </AnimatePresence>
 
-      {/* Follow-up questions (after saving) */}
+      {/* Inline follow-up questions (after saving + deepening) */}
       <AnimatePresence>
         {phase === 'saved' && followUps.length > 0 && (
           <motion.div
@@ -331,7 +318,7 @@ export function TodayPrompt({ promptId, promptText, domain }: TodayPromptProps) 
         )}
       </AnimatePresence>
 
-      {/* Action row */}
+      {/* Idle action row */}
       {phase === 'idle' && (
         <motion.div
           initial={{ opacity: 0 }}
@@ -354,41 +341,52 @@ export function TodayPrompt({ promptId, promptText, domain }: TodayPromptProps) 
         </motion.div>
       )}
 
+      {/* Saved action row — Deepen is clearly a button (stays inline), links are secondary */}
       {phase === 'saved' && (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          className="flex flex-wrap items-center gap-4"
+          className="space-y-3"
         >
+          {/* Primary: Go deeper — generates follow-up questions HERE, does not navigate */}
           {followUps.length === 0 && (
-            <button
-              type="button"
-              onClick={handleDeepen}
-              disabled={loadingDeepen}
-              className="text-sm text-foreground hover:opacity-70 transition-opacity disabled:opacity-40"
-            >
-              {loadingDeepen ? (
-                <motion.span
-                  animate={{ opacity: [0.4, 1, 0.4] }}
-                  transition={{ repeat: Infinity, duration: 1.4 }}
-                >
-                  Thinking…
-                </motion.span>
-              ) : 'Deepen →'}
-            </button>
+            <div>
+              <button
+                type="button"
+                onClick={handleDeepen}
+                disabled={loadingDeepen}
+                className="text-sm text-foreground hover:opacity-70 transition-opacity disabled:opacity-40"
+              >
+                {loadingDeepen ? (
+                  <motion.span
+                    animate={{ opacity: [0.4, 1, 0.4] }}
+                    transition={{ repeat: Infinity, duration: 1.4 }}
+                  >
+                    Thinking…
+                  </motion.span>
+                ) : 'Go deeper →'}
+              </button>
+              <p className="text-[10px] text-muted-foreground/50 mt-0.5">
+                Generates follow-up questions on this page
+              </p>
+            </div>
           )}
-          <Link
-            href={`/app/interview/${domain}`}
-            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Continue {domainLabel.toLowerCase()} interview
-          </Link>
-          <Link
-            href="/app/review"
-            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Review entries
-          </Link>
+
+          {/* Secondary: navigation links, visually quieter and separated */}
+          <div className="flex flex-wrap items-center gap-4 pt-2 border-t border-border">
+            <Link
+              href={`/app/interview/${domain}`}
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              More {domainLabel.toLowerCase()} questions →
+            </Link>
+            <Link
+              href="/app/review"
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Review entries
+            </Link>
+          </div>
         </motion.div>
       )}
     </div>
