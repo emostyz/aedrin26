@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { getOpenAIClient } from '@/lib/openai'
+import { assertUserOwnership } from '@/lib/ai-guard'
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient()
@@ -63,13 +64,19 @@ export async function POST(request: NextRequest) {
   // ── Fetch all shareable soul entries in permitted domains ────────────────────
   const { data: entries } = await service
     .from('soul_entries')
-    .select('id, domain, content, prompt_id')
+    .select('id, user_id, domain, content, prompt_id')
     .eq('user_id', deceasedUserId)
     .eq('sharing_status', 'shareable')
     .in('domain', allowedDomains)
-    .order('created_at', { ascending: true }) as { data: { id: string; domain: string; content: string; prompt_id: string | null }[] | null }
+    .order('created_at', { ascending: true }) as { data: { id: string; user_id: string; domain: string; content: string; prompt_id: string | null }[] | null }
 
   const corpus = entries ?? []
+
+  // ── Layer 4 guard: assert all fetched entries belong to deceasedUserId ────────
+  // The service client bypasses RLS; we verify ownership explicitly so a query
+  // change cannot silently serve one deceased user's entries for another.
+  assertUserOwnership(corpus, deceasedUserId, 'legacy-chat/entries')
+
   const name = deceasedUser.display_name ?? deceasedUser.legal_name
 
   // ── §8.4: If corpus is empty, decline rather than confabulate ───────────────

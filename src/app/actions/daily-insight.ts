@@ -3,6 +3,7 @@
 import { getOpenAIClient } from '@/lib/openai'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { assertUserOwnership, aiContextHeader } from '@/lib/ai-guard'
 
 const MIN_ENTRIES_FOR_INSIGHT        = 3   // need at least this many entries
 const MIN_ENTRIES_FOR_RECOMMENDATION = 10  // need this many before ever suggesting action
@@ -88,9 +89,14 @@ export async function getOrCreateTodaysInsight(): Promise<{
         .limit(60),
     ])
 
-    const entries = entriesResult.data ?? []
+    const entries = (entriesResult.data ?? []) as { user_id: string; domain: string; content: string; created_at: string }[]
     const profile = profileResult.data as Record<string, string | null> | null
-    const previousInsights = previousInsightsResult.data ?? []
+    const previousInsights = (previousInsightsResult.data ?? []) as { user_id: string; insight_text: string; pattern_sources: string[] }[]
+
+    // ── Layer 4 guard: assert ownership before any data enters the AI context ──
+    // The service client bypasses RLS; we verify ownership explicitly here.
+    assertUserOwnership(previousInsights, user.id, 'daily-insight/previousInsights')
+    assertUserOwnership(entries,          user.id, 'daily-insight/entries')
 
     // Not enough data yet
     if (entries.length < MIN_ENTRIES_FOR_INSIGHT) {
@@ -172,7 +178,8 @@ ${previousInsightList}`
         },
       },
       messages: [
-        { role: 'system', content: systemPrompt },
+        // aiContextHeader binds user_id at the prompt level (layer 5 isolation)
+        { role: 'system', content: aiContextHeader(user.id) + systemPrompt },
         { role: 'user',   content: 'Generate today\'s insight.' },
       ],
     })

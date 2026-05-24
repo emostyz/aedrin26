@@ -3,6 +3,7 @@
 import { getOpenAIClient } from '@/lib/openai'
 import { createClient } from '@/lib/supabase/server'
 import { createLifeEvent } from '@/app/actions/life-events'
+import { assertUserOwnership, aiContextHeader } from '@/lib/ai-guard'
 import type { Domain, FollowUpQuestion } from '@/lib/supabase/types'
 
 // ── Suggested life event (returned by AI) ─────────────────────────────────────
@@ -43,16 +44,22 @@ export async function suggestLifeEvents(): Promise<SuggestedLifeEvent[]> {
     if (!user) return []
 
     // Pull up to 40 entries (prioritise childhood, career, family — most event-rich)
-    const { data } = await supabase
+    const { data: rawData } = await supabase
       .from('soul_entries')
-      .select('domain, content')
+      .select('user_id, domain, content')
       .eq('user_id', user.id)
       .in('domain', ['childhood', 'career', 'family', 'lessons', 'other', 'values'])
       .order('created_at', { ascending: true })
       .limit(40)
 
-    if (!data || data.length === 0) return []
+    if (!rawData || rawData.length === 0) return []
 
+    // ── Layer 4 guard: assert ownership before data enters AI context ──────────
+    // RLS already enforces this on the user client, but we assert explicitly
+    // so a future query change cannot silently include another user's entries.
+    assertUserOwnership(rawData, user.id, 'suggestLifeEvents/entries')
+
+    const data = rawData
     const entriesText = data
       .map((e) => `[${e.domain}] ${e.content}`)
       .join('\n\n---\n\n')
@@ -72,7 +79,8 @@ export async function suggestLifeEvents(): Promise<SuggestedLifeEvent[]> {
       messages: [
         {
           role: 'system',
-          content: `You are reading someone's personal life-story entries and extracting the specific, datable events they mention — births, moves, milestones, relationships, jobs, losses, achievements.
+          // aiContextHeader binds user_id at the prompt level (layer 5 isolation)
+          content: aiContextHeader(user.id) + `You are reading someone's personal life-story entries and extracting the specific, datable events they mention — births, moves, milestones, relationships, jobs, losses, achievements.
 
 Rules:
 - Only extract events that are clearly stated or strongly implied

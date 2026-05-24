@@ -3,6 +3,7 @@
 import { getOpenAIClient } from '@/lib/openai'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { assertUserOwnership, aiContextHeader } from '@/lib/ai-guard'
 import type { Domain } from '@/lib/supabase/types'
 
 const DOMAINS: Domain[] = [
@@ -127,8 +128,13 @@ export async function getOrCreateTodaysPrompt(): Promise<{
     ])
 
     const profile = (profileResult.data ?? {}) as Record<string, string | null>
-    const previousPrompts = (previousPromptsResult.data ?? []) as { prompt_text: string; domain: string; delivered_date: string }[]
-    const entries = (entriesResult.data ?? []) as { domain: string; content: string; created_at: string }[]
+    const previousPrompts = (previousPromptsResult.data ?? []) as { user_id: string; prompt_text: string; domain: string; delivered_date: string }[]
+    const entries = (entriesResult.data ?? []) as { user_id: string; domain: string; content: string; created_at: string }[]
+
+    // ── Layer 4 guard: assert ownership before any data enters the AI context ──
+    // The service client bypasses RLS, so we verify ownership here.
+    assertUserOwnership(previousPrompts, user.id, 'daily-prompt/previousPrompts')
+    assertUserOwnership(entries,         user.id, 'daily-prompt/entries')
 
     // Build the deduplication context
     const previousList = previousPrompts.length > 0
@@ -168,7 +174,8 @@ export async function getOrCreateTodaysPrompt(): Promise<{
       messages: [
         {
           role: 'system',
-          content: buildSystemPrompt(profile) + previousList + entrySummary + strategyHint,
+          // aiContextHeader binds user_id at the prompt level (layer 5 isolation)
+          content: aiContextHeader(user.id) + buildSystemPrompt(profile) + previousList + entrySummary + strategyHint,
         },
         {
           role: 'user',
