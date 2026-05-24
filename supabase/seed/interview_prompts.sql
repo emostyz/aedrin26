@@ -15,7 +15,7 @@ insert into public.interview_prompts (domain, text, version, ord) values
   ('family', 'What do you wish you had said to a family member that you never got to say?', 1, 40),
 
   -- career
-  ('career', 'What is the work you've done that you are most proud of — and why?', 1, 10),
+  ('career', 'What is the work you''ve done that you are most proud of — and why?', 1, 10),
   ('career', 'Describe a time you failed at something important in your working life. What did you learn?', 1, 20),
   ('career', 'If you could give one piece of advice to someone starting out in your field, what would it be?', 1, 30),
   ('career', 'What did work cost you — in time, relationships, or other ways — and was it worth it?', 1, 40),
