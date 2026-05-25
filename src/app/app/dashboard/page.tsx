@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { FadeUp, Stagger, StaggerItem } from '@/components/ui/motion'
 import { TodayPrompt } from '@/components/dashboard/today-prompt'
+import { GuidedSetup } from '@/components/dashboard/guided-setup'
 import { DailyInsight } from '@/components/dashboard/daily-insight'
 import { HorizonPanel } from '@/components/dashboard/horizon-panel'
 import { getOrCreateTodaysPrompt } from '@/app/actions/daily-prompt'
@@ -95,7 +96,7 @@ export default async function DashboardPage() {
   // Run all data fetches in parallel, including AI generation for today's prompt + insight
   const [entriesResult, profileResult, legacyResult, todayPromptResult, todayInsightResult, horizonItems, recentEntriesResult] = await Promise.all([
     supabase.from('soul_entries').select('id, domain, content, daily_prompt_id').eq('user_id', user.id),
-    supabase.from('users').select('account_state, legal_name, display_name').eq('id', user.id).single(),
+    supabase.from('users').select('account_state, legal_name, display_name, setup_complete').eq('id', user.id).single(),
     service.from('heirs').select('id, user_id').eq('email', user.email!.toLowerCase()).eq('access_status', 'active'),
     getOrCreateTodaysPrompt(),
     getOrCreateTodaysInsight(),
@@ -108,7 +109,7 @@ export default async function DashboardPage() {
   ])
 
   const entries = (entriesResult.data ?? []) as { id: string; domain: Domain; content: string; daily_prompt_id: string | null }[]
-  const profile = profileResult.data as { account_state: string; legal_name: string; display_name: string | null } | null
+  const profile = profileResult.data as { account_state: string; legal_name: string; display_name: string | null; setup_complete: boolean } | null
   const legacyHeirs = (legacyResult.data ?? []) as { id: string; user_id: string }[]
   const todayPrompt = todayPromptResult.prompt
   const todayInsight = todayInsightResult.insight
@@ -174,6 +175,7 @@ export default async function DashboardPage() {
 
   const isMemoralizing = profile?.account_state === 'memorializing'
   const firstName = (profile?.display_name ?? profile?.legal_name ?? '').split(' ')[0]
+  const setupComplete = profile?.setup_complete ?? true
 
   return (
     <div className="space-y-16">
@@ -228,72 +230,81 @@ export default async function DashboardPage() {
           </div>
         </FadeUp>
 
-        {/* Task count label */}
-        <FadeUp delay={0.03}>
-          <p className="text-xs text-muted-foreground">
-            {todayAnsweredEntry ? '1 of 1 tasks complete' : '0 of 1 tasks complete'}
-          </p>
-        </FadeUp>
-
-        {/* The task */}
-        <FadeUp delay={0.05}>
-          {todayPrompt ? (
-            <TodayPrompt
-              promptId={todayPrompt.id}
-              promptText={todayPrompt.prompt_text}
-              domain={todayPrompt.domain}
-              existingEntry={todayAnsweredEntry ? { content: todayAnsweredEntry.content } : null}
-            />
-          ) : (
-            <div className="border border-border rounded-xl p-6 space-y-3">
-              <p className="text-label">Today&apos;s reflection</p>
-              <p className="text-sm text-muted-foreground">
-                Your personalized prompt is being prepared.{' '}
-                <Link href="/app/interview/childhood" className="text-foreground underline underline-offset-4">
-                  Browse topics →
-                </Link>
+        {!setupComplete ? (
+          /* First-run guided setup — replaces the daily cadence on day one */
+          <FadeUp delay={0.05}>
+            <GuidedSetup firstName={firstName} />
+          </FadeUp>
+        ) : (
+          <>
+            {/* Task count label */}
+            <FadeUp delay={0.03}>
+              <p className="text-xs text-muted-foreground">
+                {todayAnsweredEntry ? '1 of 1 tasks complete' : '0 of 1 tasks complete'}
               </p>
-            </div>
-          )}
-        </FadeUp>
+            </FadeUp>
 
-        {/* Come back tomorrow — shown only when today is done */}
-        {todayAnsweredEntry && (
-          <FadeUp delay={0.1}>
-            <div className="rounded-xl border border-border/40 px-6 py-5 space-y-4 bg-surface/20">
-              <div className="space-y-1">
-                <p className="text-sm font-medium text-foreground">
-                  {streakDays > 1
-                    ? `${streakDays}-day streak. Come back tomorrow.`
-                    : 'Come back tomorrow for your next reflection.'}
-                </p>
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  Daily reflection is how your story gets written. Same time tomorrow.
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-x-5 gap-y-2 pt-1 border-t border-border/30">
-                <Link href="/app/interview" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
-                  Keep going in Capture →
-                </Link>
-                <Link href="/app/review" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
-                  Review your entries →
-                </Link>
-                <Link href="/app/lifemap" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
-                  Open your life map →
-                </Link>
-              </div>
-            </div>
-          </FadeUp>
-        )}
+            {/* The task */}
+            <FadeUp delay={0.05}>
+              {todayPrompt ? (
+                <TodayPrompt
+                  promptId={todayPrompt.id}
+                  promptText={todayPrompt.prompt_text}
+                  domain={todayPrompt.domain}
+                  existingEntry={todayAnsweredEntry ? { content: todayAnsweredEntry.content } : null}
+                />
+              ) : (
+                <div className="border border-border rounded-xl p-6 space-y-3">
+                  <p className="text-label">Today&apos;s reflection</p>
+                  <p className="text-sm text-muted-foreground">
+                    Your personalized prompt is being prepared.{' '}
+                    <Link href="/app/interview/childhood" className="text-foreground underline underline-offset-4">
+                      Browse topics →
+                    </Link>
+                  </p>
+                </div>
+              )}
+            </FadeUp>
 
-        {todayInsight && (
-          <FadeUp delay={0.12}>
-            <DailyInsight
-              insightText={todayInsight.insight_text}
-              recommendation={todayInsight.recommendation}
-              patternSources={todayInsight.pattern_sources}
-            />
-          </FadeUp>
+            {/* Come back tomorrow — shown only when today is done */}
+            {todayAnsweredEntry && (
+              <FadeUp delay={0.1}>
+                <div className="rounded-xl border border-border/40 px-6 py-5 space-y-4 bg-surface/20">
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium text-foreground">
+                      {streakDays > 1
+                        ? `${streakDays}-day streak. Come back tomorrow.`
+                        : 'Come back tomorrow for your next reflection.'}
+                    </p>
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      Daily reflection is how your story gets written. Same time tomorrow.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-x-5 gap-y-2 pt-1 border-t border-border/30">
+                    <Link href="/app/interview" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                      Keep going in Capture →
+                    </Link>
+                    <Link href="/app/review" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                      Review your entries →
+                    </Link>
+                    <Link href="/app/lifemap" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                      Open your life map →
+                    </Link>
+                  </div>
+                </div>
+              </FadeUp>
+            )}
+
+            {todayInsight && (
+              <FadeUp delay={0.12}>
+                <DailyInsight
+                  insightText={todayInsight.insight_text}
+                  recommendation={todayInsight.recommendation}
+                  patternSources={todayInsight.pattern_sources}
+                />
+              </FadeUp>
+            )}
+          </>
         )}
       </div>
 

@@ -80,6 +80,7 @@ export interface Database {
           biggest_regret: string | null
           life_purpose: string | null
           onboarding_complete: boolean
+          setup_complete: boolean
           created_at: string
           updated_at: string
         }
@@ -102,6 +103,7 @@ export interface Database {
           biggest_regret?: string | null
           life_purpose?: string | null
           onboarding_complete?: boolean
+          setup_complete?: boolean
           created_at?: string
           updated_at?: string
         }

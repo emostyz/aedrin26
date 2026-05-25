@@ -116,12 +116,12 @@ export async function getOrCreateTodaysPrompt(): Promise<{
     const [profileResult, previousPromptsResult, entriesResult] = await Promise.all([
       supabase.from('users').select('*').eq('id', user.id).single(),
       service.from('daily_prompts')
-        .select('prompt_text, domain, delivered_date')
+        .select('user_id, prompt_text, domain, delivered_date')
         .eq('user_id', user.id)
         .order('delivered_date', { ascending: false })
         .limit(90),
       supabase.from('soul_entries')
-        .select('domain, content, created_at')
+        .select('user_id, domain, content, created_at')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
         .limit(50),
