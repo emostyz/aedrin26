@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { sendEmails } from '@/lib/email'
+import { heirAccessLiveEmail } from '@/lib/email-templates'
 
 type Params = { params: Promise<{ requestId: string }> }
 
@@ -62,6 +64,17 @@ export async function POST(request: NextRequest, { params }: Params) {
     ])
     if (userUpdate.error) return NextResponse.json({ error: userUpdate.error.message }, { status: 500 })
     if (heirUpdate.error) return NextResponse.json({ error: heirUpdate.error.message }, { status: 500 })
+
+    // Notify each heir that the legacy is now available to them.
+    const { data: deceased } = await service.from('users')
+      .select('legal_name, display_name').eq('id', req.user_id).maybeSingle() as
+      { data: { legal_name: string; display_name: string | null } | null }
+    const { data: heirs } = await service.from('heirs')
+      .select('email').eq('user_id', req.user_id).eq('access_status', 'active') as
+      { data: { email: string }[] | null }
+    const deceasedName = deceased?.display_name ?? deceased?.legal_name ?? 'your loved one'
+    const tmpl = heirAccessLiveEmail(deceasedName)
+    await sendEmails((heirs ?? []).map((h) => ({ to: h.email, subject: tmpl.subject, html: tmpl.html })))
   }
 
   return NextResponse.json({ success: true, status: newStatus })

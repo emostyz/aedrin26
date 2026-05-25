@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { FadeUp, Stagger, StaggerItem } from '@/components/ui/motion'
 import { HeirManager } from '@/components/settings/heir-manager'
 import { ExecutorManager } from '@/components/settings/executor-manager'
+import { ReminderToggle } from '@/components/settings/reminder-toggle'
 import type { Domain } from '@/lib/supabase/types'
 
 const ALL_DOMAINS: Domain[] = ['childhood','family','career','values','beliefs','lessons','messages','other']
@@ -12,11 +13,14 @@ export default async function SettingsPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
 
-  const [{ data: rawHeirs }, { data: perms }, { data: rawExecutors }] = await Promise.all([
+  const [{ data: rawHeirs }, { data: perms }, { data: rawExecutors }, { data: prefRow }] = await Promise.all([
     supabase.from('heirs').select('*').eq('user_id', user.id).order('created_at'),
     supabase.from('heir_permissions').select('*'),
     supabase.from('executors').select('*').eq('user_id', user.id).order('created_at'),
+    supabase.from('users').select('reminders_enabled').eq('id', user.id).single(),
   ])
+
+  const remindersEnabled = (prefRow as { reminders_enabled: boolean } | null)?.reminders_enabled ?? true
 
   const heirs = (rawHeirs ?? []).map((h: Record<string, unknown>) => {
     const heirPerms = (perms ?? []).filter((p: Record<string, unknown>) => p.heir_id === h.id)
@@ -78,6 +82,22 @@ export default async function SettingsPage() {
           >
             View memorialization status →
           </Link>
+        </StaggerItem>
+      </Stagger>
+
+      <div className="border-t border-border" />
+
+      <Stagger className="space-y-3">
+        <StaggerItem>
+          <div className="space-y-0.5">
+            <p className="text-label">Notifications</p>
+            <p className="text-xs text-muted-foreground">
+              A gentle daily nudge to reflect, sent to your email.
+            </p>
+          </div>
+        </StaggerItem>
+        <StaggerItem>
+          <ReminderToggle initialEnabled={remindersEnabled} />
         </StaggerItem>
       </Stagger>
 

@@ -117,3 +117,20 @@ export async function removeExecutor(executorId: string) {
   revalidatePath('/app/settings')
   return { success: true }
 }
+
+// ─── Notifications ──────────────────────────────────────────────────────────
+
+export async function updateReminderPreference(enabled: boolean) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Not authenticated.' }
+
+  const { error } = await supabase
+    .from('users')
+    .update({ reminders_enabled: enabled })
+    .eq('id', user.id)
+
+  if (error) return { error: error.message }
+  revalidatePath('/app/settings')
+  return { success: true }
+}

@@ -4,6 +4,8 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { screenAccessRequest } from '@/lib/risk-screen'
+import { sendEmail } from '@/lib/email'
+import { accessDecisionEmail } from '@/lib/email-templates'
 import type { ClaimedRole } from '@/lib/supabase/types'
 
 const VALID_ROLES: ClaimedRole[] = ['heir', 'executor', 'legal_representative', 'next_of_kin', 'other']
@@ -176,6 +178,9 @@ export async function submitForVerification(
       })
       .eq('id', requestId)
 
+    const approvedTmpl = accessDecisionEmail(true, false)
+    await sendEmail({ to: req.requester_email, subject: approvedTmpl.subject, html: approvedTmpl.html })
+
     revalidatePath('/app/represent')
     revalidatePath(`/app/represent/${requestId}`)
     return { success: true, status: 'approved', autoApproved: true }
@@ -190,6 +195,9 @@ export async function submitForVerification(
       risk_reasons: screen.reasons,
     })
     .eq('id', requestId)
+
+  const reviewTmpl = accessDecisionEmail(false, true)
+  await sendEmail({ to: req.requester_email, subject: reviewTmpl.subject, html: reviewTmpl.html })
 
   revalidatePath('/app/represent')
   revalidatePath(`/app/represent/${requestId}`)

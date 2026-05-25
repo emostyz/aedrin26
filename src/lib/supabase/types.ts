@@ -81,6 +81,8 @@ export interface Database {
           life_purpose: string | null
           onboarding_complete: boolean
           setup_complete: boolean
+          reminders_enabled: boolean
+          last_reminded_on: string | null
           created_at: string
           updated_at: string
         }
@@ -104,6 +106,8 @@ export interface Database {
           life_purpose?: string | null
           onboarding_complete?: boolean
           setup_complete?: boolean
+          reminders_enabled?: boolean
+          last_reminded_on?: string | null
           created_at?: string
           updated_at?: string
         }

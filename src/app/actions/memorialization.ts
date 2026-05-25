@@ -3,6 +3,8 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { sendEmail } from '@/lib/email'
+import { memorializationInitiatedEmail } from '@/lib/email-templates'
 
 // ─── Executor: initiate a memorialization request ─────────────────────────────
 export async function initiateMemorialization(formData: FormData) {
@@ -60,6 +62,10 @@ export async function initiateMemorialization(formData: FormData) {
 
   // Update account state to memorializing
   await service.from('users').update({ account_state: 'memorializing' }).eq('id', targetUser.id)
+
+  // Notify the account owner so they can cancel if this was a mistake.
+  const ownerEmail = memorializationInitiatedEmail()
+  await sendEmail({ to: targetEmail, subject: ownerEmail.subject, html: ownerEmail.html })
 
   revalidatePath('/app/executor')
   return { success: true, requestId: request.id, deceasedName: targetUser.legal_name }

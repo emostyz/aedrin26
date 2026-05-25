@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { sendEmail } from '@/lib/email'
+import { accessDecisionEmail } from '@/lib/email-templates'
 import type { Domain } from '@/lib/supabase/types'
 
 type Params = { params: Promise<{ requestId: string }> }
@@ -54,6 +56,8 @@ export async function POST(request: NextRequest, { params }: Params) {
       .update({ status: 'rejected', decided_by: 'admin', decided_at: now, review_notes: body.reviewNotes ?? null })
       .eq('id', requestId)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    const rejTmpl = accessDecisionEmail(false, false)
+    await sendEmail({ to: req.requester_email, subject: rejTmpl.subject, html: rejTmpl.html })
     return NextResponse.json({ success: true, status: 'rejected' })
   }
 
@@ -136,6 +140,9 @@ export async function POST(request: NextRequest, { params }: Params) {
     .update({ status: 'approved', decided_by: 'admin', decided_at: now, review_notes: body.reviewNotes ?? null })
     .eq('id', requestId)
   if (reqErr) return NextResponse.json({ error: reqErr.message }, { status: 500 })
+
+  const apprTmpl = accessDecisionEmail(true, false)
+  await sendEmail({ to: req.requester_email, subject: apprTmpl.subject, html: apprTmpl.html })
 
   return NextResponse.json({ success: true, status: 'approved' })
 }
