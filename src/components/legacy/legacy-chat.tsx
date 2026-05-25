@@ -1,7 +1,9 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import Link from 'next/link'
 import { motion, AnimatePresence } from '@/components/ui/motion'
+import type { Domain } from '@/lib/supabase/types'
 
 type Message = { role: 'user' | 'assistant'; content: string; entryCount?: number }
 
@@ -10,6 +12,9 @@ interface Props {
   deceasedName: string
   heirId: string
   heirName: string
+  allowedDomains?: Domain[]
+  expiresAt?: string | null
+  canNegotiate?: boolean
 }
 
 // Typing indicator — three dots in a graceful rhythm
@@ -38,7 +43,7 @@ function TypingIndicator() {
   )
 }
 
-export function LegacyChat({ deceasedUserId, deceasedName, heirId, heirName }: Props) {
+export function LegacyChat({ deceasedUserId, deceasedName, heirId, heirName, allowedDomains, expiresAt, canNegotiate }: Props) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput]       = useState('')
   const [loading, setLoading]   = useState(false)
@@ -118,6 +123,28 @@ export function LegacyChat({ deceasedUserId, deceasedName, heirId, heirName }: P
           Answers are drawn only from what {deceasedName.split(' ')[0]} recorded.
           Accessed by <span className="text-muted-foreground">{heirName}</span>.
         </p>
+
+        {/* Scope, expiry & negotiation — transparency as a security feature */}
+        <div className="space-y-1.5">
+          {allowedDomains && allowedDomains.length > 0 && (
+            <p className="text-[10px] text-muted-foreground/60">
+              In scope: {allowedDomains.join(' · ')}
+            </p>
+          )}
+          {expiresAt && (
+            <p className="text-[10px] text-muted-foreground/60">
+              Access expires {new Date(expiresAt).toLocaleDateString()}
+            </p>
+          )}
+          {canNegotiate && (
+            <Link
+              href={`/app/legacy/${deceasedUserId}/negotiations`}
+              className="inline-block text-[11px] text-foreground underline underline-offset-2 hover:opacity-70 transition-opacity"
+            >
+              Open negotiations →
+            </Link>
+          )}
+        </div>
       </motion.div>
 
       {/* ── Messages ────────────────────────────────────────────────── */}

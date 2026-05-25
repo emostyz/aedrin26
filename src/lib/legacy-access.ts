@@ -11,6 +11,7 @@ export interface LegacyAccess {
   deceasedUserId: string
   deceasedName: string
   heirId: string
+  heirName: string
   allowedDomains: Domain[]
   canNegotiate: boolean
   expiresAt: string | null
@@ -37,13 +38,14 @@ export async function resolveLegacyAccess(
 
   const { data: heir } = (await service
     .from('heirs')
-    .select('id, access_status, verified_at, access_expires_at, can_negotiate')
+    .select('id, name, access_status, verified_at, access_expires_at, can_negotiate')
     .eq('user_id', deceasedUserId)
     .eq('email', email)
     .eq('access_status', 'active')
     .maybeSingle()) as {
     data: {
       id: string
+      name: string
       access_status: string
       verified_at: string | null
       access_expires_at: string | null
@@ -73,6 +75,7 @@ export async function resolveLegacyAccess(
     deceasedUserId,
     deceasedName: deceased.display_name ?? deceased.legal_name,
     heirId: heir.id,
+    heirName: heir.name,
     allowedDomains,
     canNegotiate: heir.can_negotiate ?? false,
     expiresAt: heir.access_expires_at,
