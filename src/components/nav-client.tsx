@@ -10,6 +10,7 @@ const DESKTOP_NAV_ITEMS = [
   { href: '/app/review', label: 'Review' },
   { href: '/app/lifemap', label: 'Life map' },
   { href: '/app/values', label: 'Values' },
+  { href: '/app/represent', label: 'Represent' },
   { href: '/app/settings', label: 'Settings' },
   { href: '/app/profile', label: 'Profile' },
 ]

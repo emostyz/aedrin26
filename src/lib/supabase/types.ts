@@ -8,6 +8,26 @@ export type EntrySource = 'typed' | 'voice' | 'uploaded'
 export type RelationshipStatus = 'single' | 'partnered' | 'married' | 'separated' | 'widowed' | 'other'
 export type HorizonItemType = 'event' | 'decision' | 'concern' | 'goal'
 
+// ── Legacy access / representative verification ──────────────────────────────
+export type HeirAccessStatus = 'pending' | 'active' | 'revoked'
+export type MemorializationStatus =
+  | 'pending' | 'docs_submitted' | 'grace_period' | 'under_review'
+  | 'approved' | 'rejected' | 'cancelled'
+export type ClaimedRole = 'heir' | 'executor' | 'legal_representative' | 'next_of_kin' | 'other'
+export type AccessRequestStatus =
+  | 'submitted' | 'docs_submitted' | 'pending_review'
+  | 'approved' | 'rejected' | 'cancelled' | 'expired'
+export type RiskLevel = 'low' | 'elevated' | 'high'
+export type RepDocumentType = 'government_id' | 'relationship_proof' | 'other'
+
+// ── Negotiation ──────────────────────────────────────────────────────────────
+export type NegotiationStatus = 'open' | 'resolved' | 'closed' | 'archived'
+export type ParticipantRole = 'initiator' | 'participant' | 'observer'
+export type ConsentStatus = 'invited' | 'joined' | 'declined' | 'removed'
+export type MessageAuthorType = 'participant' | 'mediator' | 'system'
+export type ProposalStatus = 'proposed' | 'accepted' | 'rejected' | 'superseded'
+export type ProposalResponse = 'accept' | 'reject' | 'abstain'
+
 export interface HorizonItem {
   id: string
   user_id: string
@@ -240,6 +260,334 @@ export interface Database {
           updated_at?: string
         }
         Update: Partial<Database['public']['Tables']['channel_partners']['Insert']>
+      }
+      heirs: {
+        Row: {
+          id: string
+          user_id: string
+          name: string
+          relationship: string
+          email: string
+          access_status: HeirAccessStatus
+          verified_at: string | null
+          verification_request_id: string | null
+          access_expires_at: string | null
+          can_negotiate: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          name: string
+          relationship: string
+          email: string
+          access_status?: HeirAccessStatus
+          verified_at?: string | null
+          verification_request_id?: string | null
+          access_expires_at?: string | null
+          can_negotiate?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['heirs']['Insert']>
+      }
+      heir_permissions: {
+        Row: {
+          id: string
+          heir_id: string
+          domain: Domain
+          allowed: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          heir_id: string
+          domain: Domain
+          allowed?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['heir_permissions']['Insert']>
+      }
+      executors: {
+        Row: {
+          id: string
+          user_id: string
+          name: string
+          email: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          name: string
+          email: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['executors']['Insert']>
+      }
+      memorialization_requests: {
+        Row: {
+          id: string
+          user_id: string
+          initiated_by_executor_email: string
+          status: MemorializationStatus
+          grace_period_ends_at: string | null
+          decided_by: string | null
+          decided_at: string | null
+          notes: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          initiated_by_executor_email: string
+          status?: MemorializationStatus
+          grace_period_ends_at?: string | null
+          decided_by?: string | null
+          decided_at?: string | null
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['memorialization_requests']['Insert']>
+      }
+      verification_documents: {
+        Row: {
+          id: string
+          request_id: string
+          document_url: string
+          type: string
+          uploaded_at: string
+        }
+        Insert: {
+          id?: string
+          request_id: string
+          document_url: string
+          type: string
+          uploaded_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['verification_documents']['Insert']>
+      }
+      legacy_access_log: {
+        Row: {
+          id: string
+          deceased_user_id: string
+          heir_id: string
+          entry_ids_accessed: string[]
+          interaction_summary: string | null
+          accessed_at: string
+        }
+        Insert: {
+          id?: string
+          deceased_user_id: string
+          heir_id: string
+          entry_ids_accessed?: string[]
+          interaction_summary?: string | null
+          accessed_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['legacy_access_log']['Insert']>
+      }
+      access_requests: {
+        Row: {
+          id: string
+          deceased_user_id: string
+          requester_user_id: string
+          requester_email: string
+          claimed_role: ClaimedRole
+          relationship: string
+          message: string | null
+          status: AccessRequestStatus
+          attestation_accepted_at: string | null
+          risk_level: RiskLevel | null
+          risk_reasons: string | null
+          auto_approved: boolean
+          decided_by: string | null
+          decided_at: string | null
+          review_notes: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          deceased_user_id: string
+          requester_user_id: string
+          requester_email: string
+          claimed_role: ClaimedRole
+          relationship: string
+          message?: string | null
+          status?: AccessRequestStatus
+          attestation_accepted_at?: string | null
+          risk_level?: RiskLevel | null
+          risk_reasons?: string | null
+          auto_approved?: boolean
+          decided_by?: string | null
+          decided_at?: string | null
+          review_notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['access_requests']['Insert']>
+      }
+      access_request_documents: {
+        Row: {
+          id: string
+          request_id: string
+          document_url: string
+          type: RepDocumentType
+          uploaded_at: string
+        }
+        Insert: {
+          id?: string
+          request_id: string
+          document_url: string
+          type: RepDocumentType
+          uploaded_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['access_request_documents']['Insert']>
+      }
+      negotiations: {
+        Row: {
+          id: string
+          deceased_user_id: string
+          title: string
+          description: string | null
+          status: NegotiationStatus
+          created_by_user_id: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          deceased_user_id: string
+          title: string
+          description?: string | null
+          status?: NegotiationStatus
+          created_by_user_id: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['negotiations']['Insert']>
+      }
+      negotiation_participants: {
+        Row: {
+          id: string
+          negotiation_id: string
+          participant_user_id: string | null
+          heir_id: string | null
+          display_name: string
+          relationship_to_deceased: string
+          relationship_context: string | null
+          non_negotiables: string[]
+          role: ParticipantRole
+          consent_status: ConsentStatus
+          joined_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          negotiation_id: string
+          participant_user_id?: string | null
+          heir_id?: string | null
+          display_name: string
+          relationship_to_deceased: string
+          relationship_context?: string | null
+          non_negotiables?: string[]
+          role?: ParticipantRole
+          consent_status?: ConsentStatus
+          joined_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['negotiation_participants']['Insert']>
+      }
+      negotiation_messages: {
+        Row: {
+          id: string
+          negotiation_id: string
+          author_type: MessageAuthorType
+          author_participant_id: string | null
+          content: string
+          cited_entry_ids: string[]
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          negotiation_id: string
+          author_type: MessageAuthorType
+          author_participant_id?: string | null
+          content: string
+          cited_entry_ids?: string[]
+          created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['negotiation_messages']['Insert']>
+      }
+      negotiation_proposals: {
+        Row: {
+          id: string
+          negotiation_id: string
+          proposed_by_participant_id: string | null
+          content: string
+          status: ProposalStatus
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          negotiation_id: string
+          proposed_by_participant_id?: string | null
+          content: string
+          status?: ProposalStatus
+          created_at?: string
+          updated_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['negotiation_proposals']['Insert']>
+      }
+      negotiation_proposal_responses: {
+        Row: {
+          id: string
+          proposal_id: string
+          participant_id: string
+          response: ProposalResponse
+          comment: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          proposal_id: string
+          participant_id: string
+          response: ProposalResponse
+          comment?: string | null
+          created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['negotiation_proposal_responses']['Insert']>
+      }
+      negotiation_access_log: {
+        Row: {
+          id: string
+          negotiation_id: string
+          deceased_user_id: string
+          actor_user_id: string
+          action: string
+          detail: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          negotiation_id: string
+          deceased_user_id: string
+          actor_user_id: string
+          action: string
+          detail?: string | null
+          created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['negotiation_access_log']['Insert']>
       }
     }
   }
