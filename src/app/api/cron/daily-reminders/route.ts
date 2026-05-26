@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { sendEmails } from '@/lib/email'
 import { dailyReminderEmail } from '@/lib/email-templates'
+import { signReplyToken } from '@/lib/reply-token'
 
 // GET /api/cron/daily-reminders
 // Invoked daily by Vercel Cron (see vercel.json). Vercel attaches
@@ -39,23 +40,32 @@ export async function GET(request: NextRequest) {
 
   const ids = candidates.map((c) => c.id)
 
-  // Who already reflected today, and what is each person's prompt for today.
+  // Who already reflected today, and each person's prompt (id/domain/text) today.
   const [entriesRes, promptsRes] = await Promise.all([
     service.from('soul_entries').select('user_id').in('user_id', ids).gte('created_at', todayStart),
-    service.from('daily_prompts').select('user_id, prompt_text').in('user_id', ids).eq('delivered_date', today),
+    service.from('daily_prompts').select('user_id, id, prompt_text, domain').in('user_id', ids).eq('delivered_date', today),
   ])
   const reflectedToday = new Set(((entriesRes.data ?? []) as { user_id: string }[]).map((e) => e.user_id))
   const promptByUser = new Map(
-    ((promptsRes.data ?? []) as { user_id: string; prompt_text: string }[]).map((p) => [p.user_id, p.prompt_text]),
+    ((promptsRes.data ?? []) as { user_id: string; id: string; prompt_text: string; domain: string }[])
+      .map((p) => [p.user_id, p]),
   )
 
+  // Reply-to-save: only when inbound is configured (RESEND_INBOUND_DOMAIN).
+  const inboundDomain = process.env.RESEND_INBOUND_DOMAIN
   const toRemind = candidates.filter((c) => !reflectedToday.has(c.id))
 
   await sendEmails(
     toRemind.map((c) => {
       const firstName = (c.display_name ?? c.legal_name ?? '').split(' ')[0]
-      const tmpl = dailyReminderEmail(firstName, promptByUser.get(c.id) ?? null)
-      return { to: c.email, subject: tmpl.subject, html: tmpl.html }
+      const prompt = promptByUser.get(c.id) ?? null
+      let replyTo: string | undefined
+      if (inboundDomain && prompt) {
+        const token = signReplyToken({ u: c.id, p: prompt.id, d: prompt.domain, dt: today })
+        if (token) replyTo = `reply+${token}@${inboundDomain}`
+      }
+      const tmpl = dailyReminderEmail(firstName, prompt?.prompt_text ?? null, !!replyTo)
+      return { to: c.email, subject: tmpl.subject, html: tmpl.html, replyTo }
     }),
   )
 

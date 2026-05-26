@@ -18,6 +18,7 @@ export async function sendEmail(opts: {
   to: string
   subject: string
   html: string
+  replyTo?: string
 }): Promise<SendEmailResult> {
   const key = process.env.RESEND_API_KEY
   const from = process.env.EMAIL_FROM
@@ -26,10 +27,12 @@ export async function sendEmail(opts: {
     return { ok: false, skipped: true }
   }
   try {
+    const body: Record<string, unknown> = { from, to: opts.to, subject: opts.subject, html: opts.html }
+    if (opts.replyTo) body.reply_to = opts.replyTo
     const res = await fetch(RESEND_ENDPOINT, {
       method: 'POST',
       headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from, to: opts.to, subject: opts.subject, html: opts.html }),
+      body: JSON.stringify(body),
     })
     if (!res.ok) {
       const detail = await res.text()
@@ -45,7 +48,7 @@ export async function sendEmail(opts: {
 
 // Best-effort fan-out; never throws (email must not break a core flow).
 export async function sendEmails(
-  messages: { to: string; subject: string; html: string }[],
+  messages: { to: string; subject: string; html: string; replyTo?: string }[],
 ): Promise<void> {
   await Promise.all(messages.map((m) => sendEmail(m).catch(() => undefined)))
 }

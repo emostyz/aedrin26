@@ -46,8 +46,12 @@ function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
-// ── Daily reflection reminder — features the prompt + one-click deep link ────
-export function dailyReminderEmail(firstName: string, promptText: string | null): { subject: string; html: string } {
+// ── Daily reflection reminder — prompt + one-click deep link (+ reply-to-save) ─
+export function dailyReminderEmail(
+  firstName: string,
+  promptText: string | null,
+  canReply = false,
+): { subject: string; html: string } {
   const name = firstName ? esc(firstName) : 'there'
   const promptBlock = promptText
     ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:8px 0 22px;"><tr>
@@ -55,7 +59,9 @@ export function dailyReminderEmail(firstName: string, promptText: string | null)
            <p style="margin:0;font-size:18px;line-height:1.5;font-weight:300;font-style:italic;color:${C.fg};">&ldquo;${esc(promptText)}&rdquo;</p>
          </td></tr></table>`
     : ''
-  // Deep link lands them with the answer composer already open (?reflect=1).
+  const replyHint = canReply
+    ? p(`<span style="font-size:12px;color:${C.faint};">Or simply <strong style="color:${C.soft};">reply to this email</strong> with your reflection — we'll save it to your journal automatically.</span>`)
+    : p(`<span style="font-size:12px;color:${C.faint};">Tap above and write straight away — it saves to your private journal in one click.</span>`)
   return {
     subject: promptText ? 'Today’s reflection is ready' : 'A moment for yourself today',
     html: shell(
@@ -63,7 +69,7 @@ export function dailyReminderEmail(firstName: string, promptText: string | null)
       p('Two quiet minutes today becomes part of the story the people you love will one day read.') +
       promptBlock +
       button(`${BASE_URL}/app/dashboard?reflect=1`, 'Write today’s reflection') +
-      p(`<span style="font-size:12px;color:${C.faint};">Tap above and write straight away — it saves to your private journal in one click.</span>`),
+      replyHint,
     ),
   }
 }
