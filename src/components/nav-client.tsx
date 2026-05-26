@@ -12,7 +12,6 @@ const DESKTOP_NAV_ITEMS = [
   { href: '/app/values', label: 'Values' },
   { href: '/app/represent', label: 'Represent' },
   { href: '/app/settings', label: 'Settings' },
-  { href: '/app/profile', label: 'Profile' },
 ]
 
 const BOTTOM_NAV_ITEMS = [
@@ -133,7 +132,7 @@ export function NavClient({ displayName, children }: Props) {
               <span className={`flex items-center justify-center rounded-xl p-1.5 transition-colors ${active ? 'bg-foreground/5' : ''}`}>
                 {item.icon}
               </span>
-              <span className="text-[9px] uppercase tracking-wider leading-none">{item.label}</span>
+              <span className="text-[9px] uppercase tracking-wider leading-none whitespace-nowrap">{item.label}</span>
             </Link>
           )
         })}

@@ -1,31 +1,15 @@
 import { createClient } from '@/lib/supabase/server'
 import { FadeUp } from '@/components/ui/motion'
 import { ValuesEditor } from '@/components/values/values-editor'
+import { getOrRefreshValueSummary } from '@/app/actions/values'
 
 export default async function ValuesPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
 
-  const [{ data: summaries }, { data: entries }] = await Promise.all([
-    supabase
-      .from('value_summaries')
-      .select('id, content, approved_by_user, approved_at, created_at')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false })
-      .limit(1),
-    supabase
-      .from('soul_entries')
-      .select('id')
-      .eq('user_id', user.id)
-      .in('domain', ['values', 'beliefs', 'lessons']),
-  ])
-
-  const latest = summaries && summaries.length > 0
-    ? summaries[0] as { id: string; content: string; approved_by_user: boolean; approved_at: string | null; created_at: string }
-    : null
-
-  const entryCount = (entries ?? []).length
+  // Regenerates only when there's new intel since the last summary, once a day.
+  const { summary: latest, entryCount } = await getOrRefreshValueSummary()
 
   return (
     <div className="space-y-12">

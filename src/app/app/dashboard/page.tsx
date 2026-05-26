@@ -86,7 +86,14 @@ function SoulRing({ countByDomain }: { countByDomain: Record<string, number> }) 
   )
 }
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ reflect?: string }>
+}) {
+  const { reflect } = await searchParams
+  const autoWrite = reflect === '1'
+
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
@@ -252,6 +259,7 @@ export default async function DashboardPage() {
                   promptText={todayPrompt.prompt_text}
                   domain={todayPrompt.domain}
                   existingEntry={todayAnsweredEntry ? { content: todayAnsweredEntry.content } : null}
+                  autoWrite={autoWrite}
                 />
               ) : (
                 <div className="border border-border rounded-xl p-6 space-y-3">

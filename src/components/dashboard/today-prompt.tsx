@@ -13,6 +13,7 @@ interface TodayPromptProps {
   promptText: string
   domain: Domain
   existingEntry?: { content: string } | null
+  autoWrite?: boolean
 }
 
 function CheckCircle() {
@@ -156,9 +157,9 @@ function FollowUpCard({
 }
 
 // ── Main component ─────────────────────────────────────────────────────────────
-export function TodayPrompt({ promptId, promptText, domain, existingEntry }: TodayPromptProps) {
+export function TodayPrompt({ promptId, promptText, domain, existingEntry, autoWrite }: TodayPromptProps) {
   const [phase, setPhase]               = useState<'idle' | 'writing' | 'saved'>(
-    existingEntry ? 'saved' : 'idle'
+    existingEntry ? 'saved' : (autoWrite ? 'writing' : 'idle')
   )
   const [content, setContent]           = useState('')
   const [savedContent, setSavedContent] = useState(existingEntry?.content ?? '')
