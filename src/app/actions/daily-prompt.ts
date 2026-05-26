@@ -207,6 +207,40 @@ export async function getOrCreateTodaysPrompt(): Promise<{
     return { prompt: inserted as { id: string; prompt_text: string; domain: Domain; delivered_date: string } }
   } catch (err) {
     console.error('[daily-prompt] generation failed:', err)
+
+    // ── Static fallback: pull a random active interview prompt ──────────────
+    // If OpenAI is down or the key is exhausted, surface a curated static
+    // question from the interview seed rather than showing nothing at all.
+    try {
+      const supabase = await createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const today = new Date().toISOString().slice(0, 10)
+        // Use today's date as a stable seed so the same question shows all day
+        const seed = parseInt(today.replace(/-/g, ''), 10) % 1000
+        const { data: staticPrompts } = await supabase
+          .from('interview_prompts')
+          .select('id, text, domain')
+          .eq('active', true)
+          .order('ord')
+          .limit(50)
+
+        if (staticPrompts && staticPrompts.length > 0) {
+          const picked = staticPrompts[seed % staticPrompts.length]!
+          return {
+            prompt: {
+              id: `static-${picked.id}`,
+              prompt_text: picked.text,
+              domain: picked.domain as Domain,
+              delivered_date: today,
+            },
+          }
+        }
+      }
+    } catch {
+      // Ignore fallback errors — the caller handles null gracefully
+    }
+
     return { prompt: null, error: 'Could not generate today\'s prompt' }
   }
 }

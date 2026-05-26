@@ -15,10 +15,30 @@ export async function deleteAccount(_prevState: { error?: string }, formData: Fo
   }
 
   const service = createServiceClient()
+
+  // ── Delete storage files before removing the auth user ──────────────────────
+  // The DB cascade removes soul_entries rows but NOT the files in Supabase
+  // Storage. We must delete them first so no orphaned data survives.
+  await Promise.allSettled([
+    // Avatar: stored as `{userId}.{ext}` — list the folder prefix to find it
+    service.storage.from('avatars').list(user.id).then(async ({ data: files }) => {
+      if (files && files.length > 0) {
+        const paths = files.map((f) => `${user.id}/${f.name}`)
+        await service.storage.from('avatars').remove(paths)
+      }
+    }),
+    // Artifacts: stored as `{userId}/{timestamp}.{ext}` — list and remove all
+    service.storage.from('artifacts').list(user.id).then(async ({ data: files }) => {
+      if (files && files.length > 0) {
+        const paths = files.map((f) => `${user.id}/${f.name}`)
+        await service.storage.from('artifacts').remove(paths)
+      }
+    }),
+  ])
+
   const { error } = await service.auth.admin.deleteUser(user.id)
   if (error) return { error: error.message }
 
-  // Sign out locally then redirect
   await supabase.auth.signOut()
   redirect('/')
 }

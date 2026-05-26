@@ -24,25 +24,15 @@ then wrap the action/route handlers.
 
 ---
 
-### Content Security Policy (CSP)
-No CSP header is set. Prevents XSS escalation but requires nonce-based implementation
-to work alongside Supabase realtime, Framer Motion, and inline scripts Next.js injects.
-
-**Fix:** Add CSP middleware at `src/middleware.ts` using `next/headers` + a per-request
-nonce. Reference: [Next.js CSP docs](https://nextjs.org/docs/app/building-your-application/configuring/content-security-policy).
+### ~~Content Security Policy (CSP)~~ ✅ Done 2026-05-26
+Implemented in `src/proxy.ts`. Nonce-based `script-src`; `unsafe-eval` dev-only.
+Supabase host, WSS, and Google accounts allowlisted in `connect-src`.
 
 ---
 
-### Artifact display uses private bucket without signed URLs
-The `artifacts` bucket is private (good), but the stored `media_url` in `soul_entries`
-is a raw storage URL that won't render in `<img>` or `<a>` tags without auth headers.
-Attachments are currently broken for display.
-
-**Fix:** 
-1. Store only the storage **path** (not full URL) in `soul_entries.media_url`
-2. Add `GET /api/artifacts/signed?path=...` — authenticated, generates a 1-hour signed
-   URL via `service.storage.from('artifacts').createSignedUrl(path, 3600)`
-3. Replace any display of `media_url` in the UI with a call to this endpoint
+### ~~Artifact display uses private bucket without signed URLs~~ ✅ Done 2026-05-26
+`GET /api/artifacts/signed?path=...` added. Authenticated; enforces path ownership
+(`path` must start with `{userId}/`); returns a 1-hour signed URL.
 
 ---
 
@@ -110,28 +100,22 @@ and biometric (voice) data. The privacy policy must cover:
 - Third-party processors: Supabase (storage + auth), OpenAI (AI generation), Vercel (hosting)
 - GDPR / CCPA rights (access, export, deletion)
 
-### Account deletion must remove storage files
-The delete account flow (`/app/settings/delete`) removes the DB row (cascades to
-soul_entries, etc. via FK) but does NOT delete files from `avatars/` and `artifacts/`
-buckets in Supabase Storage.
+### ~~Account deletion must remove storage files~~ ✅ Done 2026-05-26
+`deleteAccount` now lists and removes all files in `avatars/{userId}/` and
+`artifacts/{userId}/` before calling `auth.admin.deleteUser`.
 
-**Fix:** In the delete account server action, before deleting the auth user, call
-`service.storage.from('avatars').remove([...])` and `service.storage.from('artifacts').list(userId)` + remove all files.
-
-### GDPR data export completeness
-The current `/api/export` returns soul entries, profile, heirs, executors. It does NOT
-include: daily_prompts, daily_insights, life_events, memorialization history.
-
-**Fix:** Add the missing tables to the export payload so users can receive a complete
-copy of all their data.
+### ~~GDPR data export completeness~~ ✅ Done 2026-05-26
+Export now includes `daily_prompts`, `daily_insights`, and `memorialization_history`.
+Schema version bumped to `1.1`.
 
 ---
 
 ## 🟢 UX / Feature gaps (pre-launch polish)
 
-### Email confirmation flow
-New users who sign up with email/password receive a confirmation email (Supabase default)
-but there's no styled confirmation page or resend flow in the app.
+### ~~Email confirmation flow~~ ✅ Done 2026-05-26
+`/auth/confirm` page added with branded styling and resend button. Signup now
+detects whether email confirmation is required (session null check) and redirects
+there automatically. Confirmation disabled in Supabase → still goes straight to onboarding.
 
 ### Email notifications
 No transactional emails are sent for: legacy access granted, memorialization request
@@ -142,7 +126,6 @@ If a user somehow lands on `/onboarding` after completing it, the page redirects
 to the dashboard — which is correct. But there's no way for a user to update their
 intake answers from Settings. Add an "Edit profile context" section in `/app/profile`.
 
-### Daily prompt / insight timing
-Prompts and insights are generated lazily on first dashboard load each day. If generation
-fails (OpenAI outage), the user sees nothing. Add a graceful fallback: surface one of
-the static `interview_prompts` seed questions for the day instead.
+### ~~Daily prompt / insight timing~~ ✅ Done 2026-05-26
+`getOrCreateTodaysPrompt` now falls back to a date-seeded static `interview_prompt`
+when OpenAI fails. Same question shows all day; gracefully degrades.

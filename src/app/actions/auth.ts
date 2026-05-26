@@ -16,7 +16,7 @@ export async function signup(_prevState: AuthState, formData: FormData): Promise
 
   const supabase = await createClient()
 
-  const { error } = await supabase.auth.signUp({
+  const { data, error } = await supabase.auth.signUp({
     email,
     password,
     options: {
@@ -28,7 +28,13 @@ export async function signup(_prevState: AuthState, formData: FormData): Promise
     return { error: error.message }
   }
 
-  // New users start with onboarding; the onboarding flow redirects to /app/dashboard on completion.
+  // If email confirmation is required, session is null — send them to the
+  // "check your inbox" page. If confirmation is disabled in Supabase (common
+  // in dev), session is already populated and we can proceed to onboarding.
+  if (!data.session) {
+    redirect(`/auth/confirm?email=${encodeURIComponent(email)}`)
+  }
+
   redirect('/onboarding')
 }
 
@@ -73,6 +79,19 @@ export async function requestPasswordReset(
   })
   // Always report success — never reveal whether an email is registered.
   if (error) console.error('[auth] resetPasswordForEmail:', error.message)
+  return { sent: true }
+}
+
+export async function resendConfirmation(
+  _prevState: { error?: string; sent?: boolean } | undefined,
+  formData: FormData,
+): Promise<{ error?: string; sent?: boolean }> {
+  const email = (formData.get('email') as string | null)?.trim()
+  if (!email) return { error: 'Email is required.' }
+
+  const supabase = await createClient()
+  const { error } = await supabase.auth.resend({ type: 'signup', email })
+  if (error) return { error: error.message }
   return { sent: true }
 }
 
