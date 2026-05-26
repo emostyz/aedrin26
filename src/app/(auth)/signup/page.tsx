@@ -4,6 +4,7 @@ import { useActionState } from 'react'
 import Link from 'next/link'
 import { signup } from '@/app/actions/auth'
 import { motion } from '@/components/ui/motion'
+import { GoogleButton } from '@/components/auth/google-button'
 
 export default function SignupPage() {
   const [state, action, pending] = useActionState(signup, undefined)
@@ -59,6 +60,7 @@ export default function SignupPage() {
           </div>
 
           <div className="space-y-5">
+            <GoogleButton label="Sign up with Google" />
             <form action={action} className="space-y-4">
               <div className="space-y-1.5">
                 <label htmlFor="legal_name" className="text-label">Legal name</label>

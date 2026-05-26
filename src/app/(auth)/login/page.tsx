@@ -4,6 +4,7 @@ import { useActionState, useState, useEffect } from 'react'
 import Link from 'next/link'
 import { login } from '@/app/actions/auth'
 import { motion } from '@/components/ui/motion'
+import { GoogleButton } from '@/components/auth/google-button'
 
 // Rotating quotes shown in the ambient panel
 const QUOTES = [
@@ -76,6 +77,7 @@ export default function LoginPage() {
           </div>
 
           <div className="space-y-5">
+            <GoogleButton label="Sign in with Google" />
             <form action={action} className="space-y-4">
               <div className="space-y-1.5">
                 <label htmlFor="email" className="text-label">Email</label>
@@ -86,7 +88,12 @@ export default function LoginPage() {
               </div>
 
               <div className="space-y-1.5">
-                <label htmlFor="password" className="text-label">Password</label>
+                <div className="flex items-center justify-between">
+                  <label htmlFor="password" className="text-label">Password</label>
+                  <Link href="/forgot-password" className="text-[11px] text-muted-foreground hover:text-foreground transition-colors normal-case tracking-normal">
+                    Forgot?
+                  </Link>
+                </div>
                 <input
                   id="password" name="password" type="password" autoComplete="current-password" required
                   className="w-full bg-input border border-border rounded-xl px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring transition-all"
