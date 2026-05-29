@@ -116,13 +116,6 @@ export function SoundwaveRecorder({
 
       audioCtx.createMediaStreamSource(stream).connect(analyser)
 
-      // Scale canvas for hi-DPI
-      const canvas = canvasRef.current!
-      const dpr    = window.devicePixelRatio || 1
-      canvas.width  = CANVAS_W * dpr
-      canvas.height = canvasHeight * dpr
-      canvas.getContext('2d')!.scale(dpr, dpr)
-
       // Pick the best supported MIME type for MediaRecorder
       const mimeType = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4']
         .find((m) => MediaRecorder.isTypeSupported(m)) ?? ''
@@ -140,10 +133,8 @@ export function SoundwaveRecorder({
         const blob = new Blob(chunksRef.current, { type: mimeUsed })
         chunksRef.current = []
 
-        cancelAnimationFrame(rafRef.current)
-        const canvas = canvasRef.current
-        if (canvas) canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height)
-
+        // Animation-frame cleanup happens via the canvas effect when state
+        // transitions out of 'recording' — no need to duplicate it here.
         streamRef.current?.getTracks().forEach((t) => t.stop())
         audioCtxRef.current?.close().catch(() => {})
         analyserRef.current = null
@@ -176,14 +167,40 @@ export function SoundwaveRecorder({
       }
 
       recorder.start()
+      // Canvas setup + draw loop now run in a separate effect that fires
+      // AFTER the canvas mounts (state change re-renders the component, the
+      // <canvas> appears in the DOM, then the effect grabs canvasRef.current).
+      // Previously we tried to access canvasRef inside start() — before any
+      // re-render — which threw on the non-null assertion and got swallowed
+      // by the catch below as a misleading "Microphone access was denied".
       setState('recording')
-      rafRef.current = requestAnimationFrame(drawFrame)
     } catch (err) {
       console.error('[SoundwaveRecorder] Mic access error:', err)
       setError('Microphone access was denied.')
       setState('idle')
     }
   }
+
+  // ── Canvas setup + draw loop ────────────────────────────────────────────────
+  // Runs when state becomes 'recording' — at this point React has committed
+  // the re-render and the <canvas> element is in the DOM, so canvasRef is
+  // populated. Cleans up on state change (stop, error, unmount).
+  useEffect(() => {
+    if (state !== 'recording') return
+    const canvas = canvasRef.current
+    if (!canvas || !analyserRef.current) return
+
+    const dpr = window.devicePixelRatio || 1
+    canvas.width  = CANVAS_W * dpr
+    canvas.height = canvasHeight * dpr
+    canvas.getContext('2d')?.scale(dpr, dpr)
+
+    rafRef.current = requestAnimationFrame(drawFrame)
+    return () => {
+      cancelAnimationFrame(rafRef.current)
+      canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height)
+    }
+  }, [state, drawFrame, canvasHeight])
 
   // ── Stop recording ─────────────────────────────────────────────────────────
   function stop() {

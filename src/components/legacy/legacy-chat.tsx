@@ -55,9 +55,12 @@ export function LegacyChat({ deceasedUserId, deceasedName, heirId, heirName, all
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, loading])
 
-  async function send(e?: React.FormEvent) {
+  // Accepts an optional override so suggested-question chips can send
+  // directly without waiting for the input-state round-trip. When no override
+  // is provided we fall back to the textarea value.
+  async function send(e?: React.FormEvent, overrideQuestion?: string) {
     e?.preventDefault()
-    const q = input.trim()
+    const q = (overrideQuestion ?? input).trim()
     if (!q || loading) return
     setInput('')
     setError(null)
@@ -182,7 +185,7 @@ export function LegacyChat({ deceasedUserId, deceasedName, heirId, heirName, all
                 <button
                   key={q}
                   type="button"
-                  onClick={() => { setInput(q); setTimeout(() => inputRef.current?.focus(), 50) }}
+                  onClick={() => send(undefined, q)}
                   className="text-xs text-muted-foreground border border-border rounded-full px-3.5 py-1.5 hover:border-foreground/20 hover:text-foreground transition-all duration-200"
                 >
                   {q}

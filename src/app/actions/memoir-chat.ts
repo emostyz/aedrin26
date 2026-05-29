@@ -4,6 +4,7 @@ import { getOpenAIClient } from '@/lib/openai'
 import { createClient } from '@/lib/supabase/server'
 import { assertUserOwnership, aiContextHeader } from '@/lib/ai-guard'
 import { saveEntry } from '@/app/actions/entries'
+import { getOrRefreshDomainNarrative } from '@/app/actions/domain-narrative'
 import type { Domain } from '@/lib/supabase/types'
 
 type ChatMessage = { role: 'user' | 'assistant'; content: string }
@@ -109,6 +110,18 @@ export async function saveConversationAsEntries(
     } else {
       saved++
     }
+  }
+
+  // After saving new entries, kick off a domain-narrative refresh.
+  // The function self-throttles (regenerates at most once per day and only
+  // when there are new entries since the last run), so calling it here is
+  // safe even if the user runs multiple save batches in a row. We don't
+  // await it — narrative generation can take a few seconds and the user
+  // shouldn't be blocked waiting on it after their conversation save.
+  if (saved > 0) {
+    getOrRefreshDomainNarrative(domain).catch((err) => {
+      console.error('[memoir-chat] narrative refresh failed:', err)
+    })
   }
 
   return { saved, skipped: alreadySavedCount, failed }

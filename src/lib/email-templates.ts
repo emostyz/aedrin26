@@ -88,13 +88,276 @@ export function memorializationInitiatedEmail(): { subject: string; html: string
 }
 
 // ── Heir access is live (to each heir, on approval) ──────────────────────────
-export function heirAccessLiveEmail(deceasedName: string): { subject: string; html: string } {
+// Deep-links directly to the legacy chat page for this specific deceased user
+// (not the generic dashboard) so the heir lands exactly where they can start
+// asking questions. If they don't have an AEDRIN account yet, the route will
+// bounce them through sign-up and back — but the signed-up email must match
+// the heir-row email, so we tell them that explicitly here.
+export function heirAccessLiveEmail(
+  deceasedName: string,
+  deceasedUserId: string,
+  heirEmail: string,
+): { subject: string; html: string } {
   return {
     subject: `You now have access to ${esc(deceasedName)}’s legacy`,
     html: shell(
       h1(`${esc(deceasedName)}’s legacy is now yours to sit with.`) +
       p(`You can now revisit the memories and reflections ${esc(deceasedName)} chose to leave behind — and ask the questions you always wanted to ask. There is no rush. Take all the time you need.`) +
-      button(`${BASE_URL}/app/dashboard`, 'Open their legacy'),
+      p(`What you'll find: a private chat where you can ask anything about their life as they remembered it, and any final letters they wrote to you. The AI answers using only what ${esc(deceasedName)} actually recorded — nothing invented.`) +
+      button(`${BASE_URL}/app/legacy/${esc(deceasedUserId)}`, 'Open their legacy') +
+      p(`<span style="color:${C.faint};font-size:13px;">If you don't have an AEDRIN account yet, sign up with <strong style="color:${C.fg};">${esc(heirEmail)}</strong> — access is tied to that email address.</span>`),
+    ),
+  }
+}
+
+// ── Docs submitted confirmation (to the executor) ────────────────────────────
+export function docsSubmittedEmail(
+  deceasedName: string,
+  graceEndDate: Date,
+): { subject: string; html: string } {
+  const dateStr = graceEndDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+  return {
+    subject: `Documents received — 30-day grace period begins for ${esc(deceasedName)}'s account`,
+    html: shell(
+      h1('Documents received.') +
+      p(`We've received the verification documents for ${esc(deceasedName)}'s account. A mandatory 30-day grace period has begun.`) +
+      p(`During this period, the account holder may cancel the request. If no cancellation is received by <strong style="color:${C.fg};">${esc(dateStr)}</strong>, the request will move to human review.`) +
+      p('You will be notified when a final decision is made.') +
+      button(`${BASE_URL}/app/executor`, 'View request status'),
+    ),
+  }
+}
+
+// ── Grace period expiring warning (to the account owner — 5 days out) ────────
+export function graceExpiringEmail(
+  deceasedName: string,
+  graceEndDate: Date,
+): { subject: string; html: string } {
+  const dateStr = graceEndDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })
+  return {
+    subject: "Your account’s grace period ends soon",
+    html: shell(
+      h1('You have 5 days to act.') +
+      p(`A memorialization request for your account was filed by a designated executor. The 30-day grace period ends on <strong style="color:${C.fg};">${esc(dateStr)}</strong>.`) +
+      p(`If this is correct and expected, no action is needed. If this is not what you intended, cancel the request now before the window closes.`) +
+      button(`${BASE_URL}/app/settings/memorialization`, 'Review and cancel if needed'),
+    ),
+  }
+}
+
+// ── Grace period expired — admin alert ───────────────────────────────────────
+export function graceExpiredAdminEmail(
+  deceasedName: string,
+  requestId: string,
+): { subject: string; html: string } {
+  return {
+    subject: `[AEDRIN Admin] Memorialization ready for review — ${esc(deceasedName)}`,
+    html: shell(
+      h1('A memorialization request needs review.') +
+      p(`The 30-day grace period for <strong style="color:${C.fg};">${esc(deceasedName)}'s</strong> account has expired without cancellation. The request is now queued for human review.`) +
+      p(`Request ID: <code style="font-family:monospace;font-size:13px;color:${C.fg};">${esc(requestId)}</code>`) +
+      button(`${BASE_URL}/app/admin/memorialization`, 'Review in admin panel'),
+    ),
+  }
+}
+
+// ── Memorialization approved (to the executor) ────────────────────────────────
+export function memorializationApprovedEmail(
+  deceasedName: string,
+): { subject: string; html: string } {
+  return {
+    subject: `${esc(deceasedName)}'s account has been memorialized`,
+    html: shell(
+      h1('The account has been memorialized.') +
+      p(`${esc(deceasedName)}'s AEDRIN account is now in legacy mode. The heirs they designated have been notified and now have access to the memories and reflections that were shared with them.`) +
+      p('This is a significant moment. Thank you for honoring their wishes.'),
+    ),
+  }
+}
+
+// ── Memorialization rejected (to the executor) ────────────────────────────────
+export function memorializationRejectedEmail(
+  deceasedName: string,
+  notes?: string | null,
+): { subject: string; html: string } {
+  return {
+    subject: `An update on the memorialization request for ${esc(deceasedName)}'s account`,
+    html: shell(
+      h1('The memorialization request was not approved.') +
+      p(`After review, we were unable to approve the memorialization request for ${esc(deceasedName)}'s account.`) +
+      (notes ? p(`Reviewer note: <em style="color:${C.fg};">${esc(notes)}</em>`) : '') +
+      p('If you believe this was in error, or if you have additional documentation, please contact support.'),
+    ),
+  }
+}
+
+// ── Heir invitation (to a newly designated heir) ──────────────────────────────
+export function heirInvitationEmail(
+  fromName: string,
+  relationship: string,
+): { subject: string; html: string } {
+  return {
+    subject: `${esc(fromName)} has named you in their AEDRIN legacy`,
+    html: shell(
+      h1(`${esc(fromName)} is thinking of you.`) +
+      p(`${esc(fromName)} has designated you as a ${esc(relationship)} in their AEDRIN account — someone they want to have access to their memories, values, and stories after they're gone.`) +
+      p('Nothing is visible to you right now — this is simply their way of making sure you are remembered in their legacy plan. You will be notified if and when their account enters legacy mode.') +
+      p(`<span style="font-size:13px;color:${C.faint};">If you ever want to capture your own story, AEDRIN is free to join.</span>`) +
+      button(`${BASE_URL}/signup`, 'Create your own account'),
+    ),
+  }
+}
+
+// ── Executor invitation (to a newly designated executor) ─────────────────────
+export function executorInvitationEmail(
+  fromName: string,
+): { subject: string; html: string } {
+  return {
+    subject: `${esc(fromName)} has designated you as an executor on AEDRIN`,
+    html: shell(
+      h1(`${esc(fromName)} trusts you with something important.`) +
+      p(`${esc(fromName)} has named you as an executor in their AEDRIN account. As an executor, you would be the person responsible for initiating the verification process after their passing.`) +
+      p('This carries no obligation right now. When the time comes, you would log in to AEDRIN and begin the memorialization process, which includes uploading verification documents and allows the account holder\'s designated heirs to access their legacy.') +
+      p(`<span style="font-size:13px;color:${C.faint};">You do not need an AEDRIN account to be an executor, but you may want one.</span>`) +
+      button(`${BASE_URL}/app/executor`, 'Learn about your role'),
+    ),
+  }
+}
+
+// ── Welcome email (after onboarding is complete) ─────────────────────────────
+export function welcomeEmail(firstName: string): { subject: string; html: string } {
+  const name = esc(firstName || 'there')
+  return {
+    subject: `Welcome to AEDRIN, ${name}`,
+    html: shell(
+      h1(`Your story starts here, ${name}.`) +
+      p('You have taken the first step — and that is the most meaningful one. Everything you capture here is yours: private by default, editable at any time, and exportable whenever you want.') +
+      p('The people who know you best will one day want to remember the things you never quite said out loud. This is the place to say them.') +
+      p('Begin with whatever is easiest. A memory. A moment. Something you are proud of, or something you wish you had done differently. There is no wrong door into your own story.') +
+      button(`${BASE_URL}/app/interview`, 'Start your first memory'),
+    ),
+  }
+}
+
+// ── Weekly digest (sent on a chosen day — context of that week) ──────────────
+export function weeklyDigestEmail(
+  firstName: string,
+  stats: {
+    entriesThisWeek: number
+    totalEntries: number
+    streak: number
+    topDomain: string | null
+    insightText: string | null
+  },
+): { subject: string; html: string } {
+  const name = esc(firstName || 'there')
+  const { entriesThisWeek, totalEntries, streak, topDomain, insightText } = stats
+
+  const statRow = (label: string, value: string | number) =>
+    `<tr>
+       <td style="padding:8px 0;font-size:13px;color:${C.soft};">${label}</td>
+       <td style="padding:8px 0;font-size:13px;color:${C.fg};text-align:right;">${value}</td>
+     </tr>`
+
+  const statsTable = `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:8px 0 24px;border-collapse:collapse;border-top:1px solid ${C.border};">
+      ${statRow('Entries this week', entriesThisWeek)}
+      ${statRow('Total entries captured', totalEntries)}
+      ${streak > 0 ? statRow('Current streak', `${streak} day${streak === 1 ? '' : 's'}`) : ''}
+      ${topDomain ? statRow('Most written about', topDomain) : ''}
+    </table>`
+
+  const insightBlock = insightText
+    ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 24px;"><tr>
+         <td style="border-left:2px solid ${C.accent};padding:4px 0 4px 18px;">
+           <p style="margin:0;font-size:15px;line-height:1.6;font-weight:300;font-style:italic;color:${C.fg};">${esc(insightText)}</p>
+           <p style="margin:6px 0 0;font-size:11px;color:${C.faint};">This week's insight</p>
+         </td></tr></table>`
+    : ''
+
+  const closingLine = entriesThisWeek === 0
+    ? p('You were quiet this week. That\'s okay. Come back when you\'re ready.')
+    : entriesThisWeek < 3
+    ? p('A little goes a long way. Everything you capture is a gift to the people who will one day want to know you.')
+    : p(`You wrote ${entriesThisWeek} time${entriesThisWeek === 1 ? '' : 's'} this week. The record grows.`)
+
+  return {
+    subject: entriesThisWeek > 0
+      ? `Your week in AEDRIN — ${entriesThisWeek} entr${entriesThisWeek === 1 ? 'y' : 'ies'} captured`
+      : 'Your AEDRIN weekly summary',
+    html: shell(
+      h1(`This week, ${name}.`) +
+      statsTable +
+      insightBlock +
+      closingLine +
+      button(`${BASE_URL}/app/dashboard`, 'Open your journal'),
+    ),
+  }
+}
+
+// ── Milestone email ───────────────────────────────────────────────────────────
+export function milestoneEmail(
+  firstName: string,
+  milestone: '1st_entry' | '10_entries' | '50_entries' | '30_day_streak' | '7_domains',
+): { subject: string; html: string } {
+  const name = esc(firstName || 'there')
+  const copy: Record<string, { subject: string; headline: string; body: string }> = {
+    '1st_entry': {
+      subject: 'You wrote your first memory',
+      headline: 'The first one is the hardest.',
+      body: 'You have captured something that will outlast you. Most people never do this. You did.',
+    },
+    '10_entries': {
+      subject: 'Ten memories captured',
+      headline: 'Ten entries.',
+      body: 'You have captured ten pieces of your story. The picture is starting to take shape. Keep going.',
+    },
+    '50_entries': {
+      subject: 'Fifty entries — your story is real',
+      headline: 'Fifty entries.',
+      body: 'This is no longer an idea — it is a record. Fifty moments, values, and lessons that belong to you and the people who love you.',
+    },
+    '30_day_streak': {
+      subject: '30 days in a row',
+      headline: '30 days without stopping.',
+      body: 'Thirty consecutive days of reflection. Whatever you were showing up for — it mattered. The habit is yours now.',
+    },
+    '7_domains': {
+      subject: 'You have written in every domain',
+      headline: 'You have touched every part of your story.',
+      body: 'Childhood, family, career, values, beliefs, lessons, messages — you have written in all seven domains. Your profile is more complete than most people\'s will ever be.',
+    },
+  }
+  const c = copy[milestone]!
+  return {
+    subject: c.subject,
+    html: shell(
+      h1(c.headline) +
+      p(c.body) +
+      button(`${BASE_URL}/app/dashboard`, 'Continue writing'),
+    ),
+  }
+}
+
+// ── Final letter delivery ─────────────────────────────────────────────────────
+// Sent to an heir when their personal letter from the deceased is released.
+export function finalLetterEmail(
+  fromName: string,
+  recipientName: string,
+  letterContent: string,
+): { subject: string; html: string } {
+  const from = esc(fromName)
+  const to   = esc(recipientName)
+  const body = esc(letterContent)
+  return {
+    subject: `A letter for you from ${from}`,
+    html: shell(
+      h1(`A letter for ${to}.`) +
+      `<p style="margin:0 0 20px;font-size:12px;line-height:1.6;color:${C.faint};letter-spacing:.05em;text-transform:uppercase;">From ${from}</p>` +
+      `<div style="border-left:2px solid ${C.border};padding:0 0 0 20px;margin:0 0 24px;">
+        <p style="margin:0;font-size:15px;line-height:1.85;color:${C.soft};white-space:pre-wrap;">${body}</p>
+      </div>` +
+      `<p style="margin:0;font-size:13px;line-height:1.7;color:${C.faint};">This message was composed by ${from} and kept private in AEDRIN until now. It was written for you.</p>`,
     ),
   }
 }
