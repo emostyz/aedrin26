@@ -3,6 +3,22 @@
     {
       "path": "/api/cron/daily-reminders",
       "schedule": "0 16 * * *"
+    },
+    {
+      "path": "/api/cron/grace-period-check",
+      "schedule": "0 10 * * *"
+    },
+    {
+      "path": "/api/cron/weekly-digest",
+      "schedule": "0 10 * * 0"
+    },
+    {
+      "path": "/api/cron/milestones",
+      "schedule": "0 12 * * *"
+    },
+    {
+      "path": "/api/cron/gift-digests",
+      "schedule": "0 14 1 * *"
     }
   ]
 }

@@ -451,3 +451,58 @@ export function giftClaimedEmail(
     ),
   }
 }
+
+// ── Gift digest (to the sender, periodically, summarising recipient activity)
+// Only includes entries the recipient explicitly marked as shareable. The
+// digest is intentionally quiet — a few sentences, not a full archive. The
+// gift-giver isn't reading their parent's journal; they're being told their
+// parent is still here, still showing up.
+export interface GiftDigestExcerpt {
+  /** Up to ~280 chars of the entry. */
+  preview: string
+  domain: string
+  createdAt: string
+}
+
+export function giftDigestEmail(
+  senderFirstName: string,
+  recipientName: string,
+  totalNewEntries: number,
+  shareableExcerpts: GiftDigestExcerpt[],
+): { subject: string; html: string } {
+  const recipientFirst = recipientName.split(/\s+/)[0] || recipientName
+
+  // The headline depends on whether anything was shared. We send the email
+  // either way (a "still here, still writing" signal matters even with no
+  // shared excerpts) but the body adapts.
+  const hasShares = shareableExcerpts.length > 0
+
+  const excerptBlocks = shareableExcerpts.map((ex) => {
+    const date = new Date(ex.createdAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric' })
+    const domainLabel = ex.domain.charAt(0).toUpperCase() + ex.domain.slice(1)
+    return `
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 18px;">
+        <tr><td style="padding:14px 16px;background:${C.bg};border-left:2px solid ${C.fg};">
+          <p style="margin:0 0 6px;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:${C.faint};">${esc(domainLabel)} · ${esc(date)}</p>
+          <p style="margin:0;font-size:15px;line-height:1.65;color:${C.fg};font-style:italic;">"${esc(ex.preview)}"</p>
+        </td></tr>
+      </table>`
+  }).join('')
+
+  const body = hasShares
+    ? p(`${esc(recipientFirst)} has been writing. Here are pieces they chose to share with you:`) +
+      excerptBlocks +
+      p(`${totalNewEntries} ${totalNewEntries === 1 ? 'entry' : 'entries'} added recently in total — including private ones only they will see.`)
+    : p(`${esc(recipientFirst)} has been writing — ${totalNewEntries} ${totalNewEntries === 1 ? 'new entry' : 'new entries'} since the last time we wrote — but hasn't marked anything to share with you yet. That's their choice, and a meaningful one. The act of remembering is happening either way.`)
+
+  return {
+    subject: hasShares
+      ? `From ${esc(recipientFirst)} — what they chose to share`
+      : `${esc(recipientFirst)} is still showing up`,
+    html: shell(
+      h1(hasShares ? `${esc(recipientFirst)} sent you something.` : `${esc(recipientFirst)} is still here, still writing.`) +
+      body +
+      button(`${BASE_URL}/app/gift`, 'See all your gifts'),
+    ),
+  }
+}
