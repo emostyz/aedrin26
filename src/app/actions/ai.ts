@@ -37,13 +37,21 @@ const LIFE_EVENT_SCHEMA = {
   additionalProperties: false,
 }
 
-export async function suggestLifeEvents(): Promise<SuggestedLifeEvent[]> {
+export interface ExistingLifeEvent {
+  title: string
+  year: number | null
+  description: string | null
+}
+
+export async function suggestLifeEvents(
+  existingEvents?: ExistingLifeEvent[],
+): Promise<SuggestedLifeEvent[]> {
   try {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return []
 
-    // Pull up to 40 entries (prioritise childhood, career, family — most event-rich)
+    // Pull up to 40 entries (prioritise event-rich domains)
     const { data: rawData } = await supabase
       .from('soul_entries')
       .select('user_id, domain, content')
@@ -54,15 +62,26 @@ export async function suggestLifeEvents(): Promise<SuggestedLifeEvent[]> {
 
     if (!rawData || rawData.length === 0) return []
 
-    // ── Layer 4 guard: assert ownership before data enters AI context ──────────
-    // RLS already enforces this on the user client, but we assert explicitly
-    // so a future query change cannot silently include another user's entries.
+    // ── Layer 4 guard ──────────────────────────────────────────────────────────
     assertUserOwnership(rawData, user.id, 'suggestLifeEvents/entries')
 
-    const data = rawData
-    const entriesText = data
+    const entriesText = rawData
       .map((e) => `[${e.domain}] ${e.content}`)
       .join('\n\n---\n\n')
+
+    const today = new Date().toISOString().slice(0, 10)
+
+    // Build a rich "already exists" block so the AI can do semantic dedup,
+    // not just exact-title matching
+    const alreadySection = existingEvents && existingEvents.length > 0
+      ? '\n\n## ALREADY ON THEIR TIMELINE — do NOT suggest anything that overlaps with these\n' +
+        'These events are already captured. Exclude them AND anything that covers the same moment or topic:\n' +
+        existingEvents.map((e) => {
+          const year = e.year ? ` (${e.year})` : ''
+          const desc = e.description ? ` — ${e.description}` : ''
+          return `- "${e.title}"${year}${desc}`
+        }).join('\n')
+      : ''
 
     const client = getOpenAIClient()
     const response = await client.chat.completions.create({
@@ -79,20 +98,23 @@ export async function suggestLifeEvents(): Promise<SuggestedLifeEvent[]> {
       messages: [
         {
           role: 'system',
-          // aiContextHeader binds user_id at the prompt level (layer 5 isolation)
-          content: aiContextHeader(user.id) + `You are reading someone's personal life-story entries and extracting the specific, datable events they mention — births, moves, milestones, relationships, jobs, losses, achievements.
-
-Rules:
-- Only extract events that are clearly stated or strongly implied
-- Each event should be meaningful and distinct (not vague moods or opinions)
-- Title should be concise and specific: "Moved to New York" not "Made a big move"
-- Estimate the year when possible; null if genuinely unknown
-- Order chronologically
-- Do not duplicate or summarise the same event twice`,
+          content:
+            aiContextHeader(user.id) +
+            `Today's date: ${today}. Use this as the reference point for any age or year calculations.\n\n` +
+            `You are reading someone's personal life-story entries and extracting specific, datable events they mention — births, moves, milestones, relationships, jobs, losses, achievements.\n\n` +
+            `Rules:\n` +
+            `- Only extract events that are clearly stated or strongly implied\n` +
+            `- Each event should be meaningful and distinct (not vague moods or opinions)\n` +
+            `- Title should be concise and specific: "Moved to New York" not "Made a big move"\n` +
+            `- Estimate the year when possible; null if genuinely unknown\n` +
+            `- Order chronologically\n` +
+            `- Do not duplicate or summarise the same event twice\n` +
+            `- If nothing NEW can be extracted (everything is already on their timeline), return an empty events array` +
+            alreadySection,
         },
         {
           role: 'user',
-          content: `Here are my life-story entries:\n\n${entriesText}\n\nExtract the key life events.`,
+          content: `Here are my life-story entries:\n\n${entriesText}\n\nExtract ONLY life events not already on my timeline.`,
         },
       ],
     })
@@ -200,7 +222,9 @@ export async function suggestFollowUps(
       messages: [
         {
           role: 'system',
-          content: `You are a master life-story interviewer helping someone capture their memories and wisdom in the domain of ${DOMAIN_CONTEXT[domain]}.
+          content: `Today's date: ${new Date().toISOString().slice(0, 10)}. Use this as the reference point for any age or year calculations.
+
+You are a master life-story interviewer helping someone capture their memories and wisdom in the domain of ${DOMAIN_CONTEXT[domain]}.
 
 ${profileContext ? `## About this person\n${profileContext}\n` : ''}
 ## Your task

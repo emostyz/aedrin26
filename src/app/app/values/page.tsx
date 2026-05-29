@@ -1,15 +1,14 @@
 import { createClient } from '@/lib/supabase/server'
 import { FadeUp } from '@/components/ui/motion'
 import { ValuesEditor } from '@/components/values/values-editor'
-import { getOrRefreshValueSummary } from '@/app/actions/values'
+import { getValueSummaryState } from '@/app/actions/values'
 
 export default async function ValuesPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
 
-  // Regenerates only when there's new intel since the last summary, once a day.
-  const { summary: latest, entryCount } = await getOrRefreshValueSummary()
+  const state = await getValueSummaryState()
 
   return (
     <div className="space-y-12">
@@ -19,12 +18,21 @@ export default async function ValuesPage() {
           What you believe, distilled.
         </p>
         <p className="text-sm text-muted-foreground">
-          An AI synthesis of your values, beliefs, and life wisdom — reviewed and approved by you.
+          An AI synthesis of your inner architecture — only generated when there&apos;s enough
+          cross-domain material to surface something you wouldn&apos;t have seen yourself.
         </p>
       </FadeUp>
 
       <FadeUp delay={0.1}>
-        <ValuesEditor initialSummary={latest} entryCount={entryCount} />
+        <ValuesEditor
+          initialSummary={state.summary}
+          entryCount={state.entryCount}
+          domainCount={state.domainCount}
+          totalWords={state.totalWords}
+          meetsThreshold={state.meetsThreshold}
+          neededEntries={state.neededEntries}
+          neededDomains={state.neededDomains}
+        />
       </FadeUp>
     </div>
   )

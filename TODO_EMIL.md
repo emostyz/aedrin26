@@ -4,7 +4,7 @@
 >
 > Claude maintains this file: new items get added (with steps + why) the moment they come up, and items get checked off when done.
 
-**Last updated:** 2026-05-26
+**Last updated:** 2026-05-29
 
 ---
 
@@ -52,6 +52,100 @@
 3. In **Vercel → Environment Variables**, set `NEXT_PUBLIC_GOOGLE_AUTH_ENABLED=true`, then **redeploy**.
 
 **Done when:** the "Continue with Google" button appears on the login/signup pages and signs you in.
+
+---
+
+### 5. Disable email confirmation in Supabase  →  *eliminates the biggest signup dropoff*
+**Why it matters:** Right now, new users hit a "check your inbox" wall immediately after signing up. Many never come back. Disabling email confirmation means users get taken straight to onboarding without waiting for an email — the account creation is instant. This is the single highest-impact change you can make to signup conversion.
+
+**Steps:**
+1. Go to **Supabase → Authentication → Providers → Email**.
+2. Toggle **Confirm email** to **OFF**.
+3. Save.
+
+That's it — no code change needed. After this, new signups will land directly on the onboarding flow instead of the "check your inbox" page.
+
+**Done when:** You sign up with a test account and land directly on the onboarding flow with no email required.
+
+---
+
+### 6. Run the custom questions migration in Supabase  →  *unblocks "add your own question" feature*
+**Why it matters:** Users can now add their own interview questions to any capture domain. The code and UI are fully built, but the `custom_questions` database table needs to be created first — otherwise saving a custom question will fail silently.
+
+**Steps:**
+1. Go to **Supabase → SQL Editor → New query**.
+2. Paste and run the contents of `supabase/migrations/016_custom_questions.sql` (it's in your repo).
+3. Click **Run**.
+
+**Done when:** You can add a custom question in Capture and it persists on reload.
+
+---
+
+### 7. Create the `avatars` storage bucket in Supabase  →  *unblocks profile photo upload*
+**Why it matters:** The profile photo upload UI is built and the code is wired up correctly, but it fails if the `avatars` storage bucket doesn't exist in Supabase. If you've already created it, you can skip this step.
+
+**Steps:**
+1. Go to **Supabase → Storage → New bucket**.
+2. Name it `avatars`.
+3. Check **Public bucket** (profile photos are served as public URLs, so this is fine — the path includes the user's UUID which provides sufficient obscurity).
+4. Save.
+
+**Done when:** Uploading a photo on your profile page succeeds and displays the image.
+
+---
+
+### 4. Set `ADMIN_EMAIL` in Vercel  →  *unblocks grace-period admin alerts*
+**Why it matters:** When a memorialization grace period expires the cron job sends you an alert email so you know to log in and review the request. Without `ADMIN_EMAIL` set, those alerts are silently skipped.
+
+**Steps:**
+1. Go to **Vercel → aedrin26 project → Settings → Environment Variables**.
+2. Add a new variable: `ADMIN_EMAIL` = `ermostrom@gmail.com` (or any inbox you check).
+3. Set it for **Production** only → Save → **Redeploy**.
+
+**Done when:** you receive a test alert (you can trigger one manually via `curl -H "Authorization: Bearer $CRON_SECRET" https://www.aedrin.com/api/cron/grace-period-check`).
+
+---
+
+### 8. Run the domain narratives migration in Supabase  →  *unblocks "Your story so far" AI summary on each domain page*
+**Why it matters:** Each domain page (Childhood, Family, Career, etc.) now shows an AI-written narrative of everything you've captured in that area — like a running memoir chapter. The code is built but the `domain_narratives` database table needs to be created first.
+
+**Steps:**
+1. Go to **Supabase → SQL Editor → New query**.
+2. Paste and run the contents of `supabase/migrations/017_domain_narratives.sql` (it's in your repo).
+3. Click **Run**.
+
+**Done when:** After capturing 3+ entries in any domain, you see a "Your story so far" narrative card at the top of that domain's page.
+
+---
+
+### 10. Run the prompt theme-tag migration in Supabase  →  *unblocks 30-day topic deduplication for daily prompts*
+**Why it matters:** The daily prompt system now uses a library of 64 distinct life-story topics and guarantees that no topic repeats within a 30-day window. Before this change, the AI could accidentally ask similar questions week after week. After this migration, each prompt is tagged with a specific topic ID (`theme_tag`), and the app blocks that topic for 30 days before cycling it back. This makes the daily reflection feel fresh and covers more ground over time.
+
+**Steps:**
+1. Go to **Supabase → SQL Editor → New query**.
+2. Paste and run the contents of `supabase/migrations/018_prompt_theme_tags.sql` (it's in your repo — it just adds a single nullable column).
+3. Click **Run**.
+
+**Done when:** You see the column `theme_tag` in the `daily_prompts` table in Supabase.
+
+*(Note: existing prompt rows will have `theme_tag = null` — that's fine. Only new prompts generated after this migration will have the tag.)*
+
+---
+
+### 9. Create PWA app icons  →  *lets users install AEDRIN as a native-feeling app on their phone*
+**Why it matters:** The code for making AEDRIN installable as a Progressive Web App (PWA) is now in place — users on iPhone and Android can "Add to Home Screen" and get a full-screen, no-browser-chrome experience just like a real app. But the icon files (the image that appears on your home screen and loading screen) need to be created and placed in the right spot.
+
+**Steps:**
+1. Open `/public/icon.svg` in your repo — it's a dark background with a white "A" that you can use as your starting point, or replace with a proper icon design.
+2. Export the SVG at two sizes: **192×192 pixels** and **512×512 pixels**, saved as PNG files.
+3. Name them exactly:
+   - `public/icons/icon-192.png`
+   - `public/icons/icon-512.png`
+4. Commit those two files and deploy.
+
+**Optional but recommended:** Use a tool like [RealFaviconGenerator](https://realfavicongenerator.net) or Figma to export a polished icon set. Upload your icon there and it will create all the sizes you need (including iOS-specific ones).
+
+**Done when:** On an iPhone, go to `aedrin.com` in Safari → tap the Share button → "Add to Home Screen" → the AEDRIN icon appears on your home screen, and opening it shows the app full-screen with no browser UI.
 
 ---
 

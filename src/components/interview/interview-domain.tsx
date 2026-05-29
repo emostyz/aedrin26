@@ -4,8 +4,11 @@ import { useState, useRef, useTransition } from 'react'
 import Link from 'next/link'
 import { saveEntry } from '@/app/actions/entries'
 import { suggestFollowUps } from '@/app/actions/ai'
+import { addCustomQuestion } from '@/app/actions/custom-questions'
 import { motion, AnimatePresence, Stagger, StaggerItem } from '@/components/ui/motion'
 import { SoundwaveRecorder } from '@/components/ui/soundwave-recorder'
+import { EntryCard } from '@/components/review/entry-card'
+import { WritingSparks } from '@/components/interview/writing-sparks'
 import type { Domain, Database, FollowUpQuestion } from '@/lib/supabase/types'
 
 type Prompt = Database['public']['Tables']['interview_prompts']['Row']
@@ -18,6 +21,7 @@ interface Props {
   existingEntries: Entry[]
   dailyPrompt?: { id: string; prompt_text: string } | null
   profileContext?: { label: string; text: string } | null
+  domainNarrative?: { content: string; createdAt: string } | null
 }
 
 type CapturePhase = 'composing' | 'saved' | 'follow-up'
@@ -141,7 +145,7 @@ function FollowUpCard({
 
 // ── Main Component ─────────────────────────────────────────────────────────────
 
-export function InterviewDomain({ domain, label, prompts, existingEntries, dailyPrompt, profileContext }: Props) {
+export function InterviewDomain({ domain, label, prompts, existingEntries, dailyPrompt, profileContext, domainNarrative }: Props) {
   // Find the entry that answers the daily prompt (answered elsewhere, e.g. dashboard).
   const alreadyAnsweredEntry = dailyPrompt
     ? existingEntries.find(
@@ -233,13 +237,23 @@ export function InterviewDomain({ domain, label, prompts, existingEntries, daily
     setUploadedFile({ name: json.name, url: json.url })
   }
 
+  // Whether the current prompt is the daily AI prompt
+  const currentIsDaily = !!(dailyPrompt && currentPrompt?.id === dailyPrompt.id)
+
   function doSave(text: string, mediaUrl?: string) {
     if (!text.trim()) return
     setError(null)
     const fd = new FormData()
     fd.set('domain', domain)
     fd.set('content', text.trim())
-    if (currentPrompt) fd.set('prompt_id', currentPrompt.id)
+    // Route the prompt ID to the correct FK so the dashboard can detect completion
+    if (currentPrompt) {
+      if (currentIsDaily) {
+        fd.set('daily_prompt_id', currentPrompt.id)
+      } else {
+        fd.set('prompt_id', currentPrompt.id)
+      }
+    }
     if (mediaUrl) fd.set('media_url', mediaUrl)
 
     startTransition(async () => {
@@ -247,8 +261,8 @@ export function InterviewDomain({ domain, label, prompts, existingEntries, daily
       if (result?.error) { setError(result.error); return }
       setEntries((prev) => [{
         id: crypto.randomUUID(), user_id: '', domain,
-        prompt_id: currentPrompt?.id ?? null,
-        daily_prompt_id: null,
+        prompt_id: currentIsDaily ? null : (currentPrompt?.id ?? null),
+        daily_prompt_id: currentIsDaily ? (currentPrompt?.id ?? null) : null,
         content: text.trim(),
         media_url: mediaUrl ?? null,
         sharing_status: 'private', bound_recipient_id: null, source: 'typed',
@@ -307,24 +321,137 @@ export function InterviewDomain({ domain, label, prompts, existingEntries, daily
     ? "Today's reflection"
     : `${promptIndex + 1} / ${effectivePrompts.length}`
 
+  // Default to Memories tab when returning to a domain with existing entries —
+  // the user is more likely here to review/edit than to start fresh.
+  const [activeTab, setActiveTab] = useState<'write' | 'memories'>(
+    existingEntries.length > 0 ? 'memories' : 'write'
+  )
+
   return (
-    <div className="space-y-14">
-      {/* Breadcrumb */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        className="flex items-center gap-2 text-xs text-muted-foreground"
-      >
-        <Link href="/app/interview" className="hover:text-foreground transition-colors">Capture</Link>
-        <span>/</span>
-        <span className="text-foreground">{label}</span>
-        {isDaily && (
-          <>
-            <span>/</span>
-            <span className="text-foreground">Today</span>
-          </>
+    <div className="space-y-8">
+      {/* Breadcrumb + tab switcher */}
+      <div className="space-y-5">
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="flex items-center gap-2 text-xs text-muted-foreground"
+        >
+          <Link href="/app/interview" className="hover:text-foreground transition-colors">Capture</Link>
+          <span>/</span>
+          <span className="text-foreground">{label}</span>
+          {isDaily && (
+            <>
+              <span>/</span>
+              <span className="text-foreground">Today</span>
+            </>
+          )}
+        </motion.div>
+
+        {/* Tabs */}
+        <motion.div
+          initial={{ opacity: 0, y: 4 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex items-center border-b border-border"
+        >
+          <button
+            type="button"
+            onClick={() => setActiveTab('write')}
+            className={`relative px-4 py-2.5 text-xs transition-colors ${
+              activeTab === 'write' ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            Write
+            {activeTab === 'write' && (
+              <motion.div layoutId="tab-indicator" className="absolute bottom-0 left-0 right-0 h-px bg-foreground" />
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('memories')}
+            className={`relative px-4 py-2.5 text-xs transition-colors flex items-center gap-2 ${
+              activeTab === 'memories' ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            Memories
+            {entries.length > 0 && (
+              <span className={`inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] tabular-nums font-medium transition-colors ${
+                activeTab === 'memories'
+                  ? 'bg-foreground text-background'
+                  : 'bg-foreground/10 text-foreground/70'
+              }`}>
+                {entries.length}
+              </span>
+            )}
+            {activeTab === 'memories' && (
+              <motion.div layoutId="tab-indicator" className="absolute bottom-0 left-0 right-0 h-px bg-foreground" />
+            )}
+          </button>
+        </motion.div>
+      </div>
+
+      {/* ── Memories tab ─────────────────────────────────────────────── */}
+      <AnimatePresence mode="wait">
+        {activeTab === 'memories' && (
+          <motion.div
+            key="memories"
+            initial={{ opacity: 0, x: 16 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -16 }}
+            transition={{ duration: 0.25, ease: [0.25, 0.1, 0.25, 1] }}
+            className="space-y-4"
+          >
+            {entries.length === 0 ? (
+              <div className="border border-border/40 rounded-xl px-5 py-12 text-center space-y-2">
+                <p className="text-sm text-muted-foreground">No memories here yet.</p>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('write')}
+                  className="text-xs text-foreground underline underline-offset-4 hover:opacity-80 transition-opacity"
+                >
+                  Start writing →
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-muted-foreground">
+                    {entries.length} {entries.length === 1 ? 'memory' : 'memories'} in this section
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('write')}
+                    className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    + Write more
+                  </button>
+                </div>
+                <Stagger className="space-y-2">
+                  {entries.map((entry) => (
+                    <StaggerItem key={entry.id}>
+                      <EntryCard entry={entry} alwaysShowControls />
+                    </StaggerItem>
+                  ))}
+                </Stagger>
+              </>
+            )}
+
+            {/* Domain narrative in memories tab */}
+            {domainNarrative && (
+              <DomainNarrativePanel narrative={domainNarrative} label={label} />
+            )}
+          </motion.div>
         )}
-      </motion.div>
+
+        {/* ── Write tab ─────────────────────────────────────────────── */}
+        {activeTab === 'write' && (
+          <motion.div
+            key="write"
+            initial={{ opacity: 0, x: -16 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 16 }}
+            transition={{ duration: 0.25, ease: [0.25, 0.1, 0.25, 1] }}
+            className="space-y-10"
+          >
 
       {/* Pinned: already-answered daily prompt banner */}
       {alreadyAnsweredEntry && (
@@ -405,14 +532,21 @@ export function InterviewDomain({ domain, label, prompts, existingEntries, daily
                 exit={{ opacity: 0, y: -8, transition: { duration: 0.2 } }}
                 className="space-y-3"
               >
-                <textarea
-                  value={content}
-                  onChange={(e) => setContent(e.target.value)}
-                  placeholder="Write your response…"
-                  rows={6}
-                  aria-label="Your response"
-                  className="w-full bg-input border border-border rounded-lg px-4 py-3.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-none transition-all"
-                />
+                <div className="relative">
+                  <textarea
+                    value={content}
+                    onChange={(e) => setContent(e.target.value)}
+                    placeholder="Write your response…"
+                    rows={6}
+                    aria-label="Your response"
+                    className="w-full bg-input border border-border rounded-lg px-4 py-3.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-none transition-all"
+                  />
+                  {content.trim() && (
+                    <span className="absolute bottom-2.5 right-3 text-[10px] text-muted-foreground/40 select-none pointer-events-none">
+                      {content.trim().split(/\s+/).filter(Boolean).length}w
+                    </span>
+                  )}
+                </div>
 
                 {uploadedFile && (
                   <motion.div
@@ -424,6 +558,12 @@ export function InterviewDomain({ domain, label, prompts, existingEntries, daily
                     <button onClick={() => setUploadedFile(null)} className="hover:text-destructive transition-colors">×</button>
                   </motion.div>
                 )}
+
+                {/* Writing sparks */}
+                <WritingSparks
+                  domain={domain}
+                  onSelectPrompt={(text) => setContent((prev) => prev ? prev + '\n\n' + text : text)}
+                />
 
                 {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
 
@@ -528,34 +668,171 @@ export function InterviewDomain({ domain, label, prompts, existingEntries, daily
         </motion.div>
       )}
 
-      {/* Saved entries */}
+      {/* Switch to Memories tab — always visible when there are entries */}
       {entries.length > 0 && (
         <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0, transition: { delay: 0.15 } }}
-          className="space-y-4 pt-8 border-t border-border"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1, transition: { delay: 0.2 } }}
         >
-          <p className="text-label">{entries.length} saved in {label}</p>
-          <Stagger className="space-y-2">
-            {entries.map((entry) => (
-              <StaggerItem key={entry.id}>
-                <div className="border border-border rounded-lg px-4 py-3 space-y-1.5">
-                  <p className="text-sm text-foreground leading-relaxed line-clamp-3">{entry.content}</p>
-                  {entry.media_url && (
-                    <p className="text-xs text-muted-foreground">↑ Attachment</p>
-                  )}
-                  <p className="text-xs text-muted-foreground">
-                    {entry.sharing_status === 'private' ? 'Private' : 'Shareable'} · {new Date(entry.created_at).toLocaleDateString()}
-                  </p>
-                </div>
-              </StaggerItem>
-            ))}
-          </Stagger>
-          <Link href="/app/review" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
-            Review & tag sharing →
-          </Link>
+          <button
+            type="button"
+            onClick={() => setActiveTab('memories')}
+            className="w-full flex items-center justify-between border border-border/50 rounded-lg px-4 py-3 text-xs hover:border-foreground/15 hover:bg-surface/30 transition-all duration-200 group"
+          >
+            <span className="text-muted-foreground group-hover:text-foreground transition-colors">
+              {entries.length} {entries.length === 1 ? 'memory' : 'memories'} saved in {label}
+            </span>
+            <span className="text-muted-foreground/50 group-hover:text-foreground transition-colors">
+              View &amp; edit →
+            </span>
+          </button>
         </motion.div>
       )}
+
+      {/* Add your own question */}
+      <AddCustomQuestion domain={domain} />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
+  )
+}
+
+// ── Domain narrative panel ─────────────────────────────────────────────────────
+
+function DomainNarrativePanel({
+  narrative,
+  label,
+}: {
+  narrative: { content: string; createdAt: string }
+  label: string
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const isLong = narrative.content.length > 400
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0, transition: { delay: 0.1 } }}
+      className="space-y-3 pt-8 border-t border-border"
+    >
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <p className="text-label shrink-0">Your {label.toLowerCase()} story</p>
+          <div className="flex-1 h-px bg-border" />
+        </div>
+        <span className="text-[10px] text-muted-foreground/50 ml-4 shrink-0">
+          AI · {new Date(narrative.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+        </span>
+      </div>
+
+      <div className="rounded-xl border border-border/60 bg-surface/20 px-5 py-4 space-y-3">
+        <p className={`text-sm text-foreground/80 leading-relaxed font-light whitespace-pre-wrap ${!expanded && isLong ? 'line-clamp-5' : ''}`}>
+          {narrative.content}
+        </p>
+        {isLong && (
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            className="text-[10px] text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+          >
+            {expanded ? 'Show less' : 'Read full story'}
+          </button>
+        )}
+      </div>
+      <p className="text-[10px] text-muted-foreground/40 leading-relaxed">
+        Generated from your entries. Refreshes automatically when you add more.
+      </p>
+    </motion.div>
+  )
+}
+
+// ── Add custom question ────────────────────────────────────────────────────────
+
+function AddCustomQuestion({ domain }: { domain: Domain }) {
+  const [open, setOpen] = useState(false)
+  const [text, setText] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [saved, setSaved] = useState(false)
+  const [isPending, startTransition] = useTransition()
+
+  function handleSave() {
+    if (!text.trim()) return
+    setError(null)
+    startTransition(async () => {
+      const result = await addCustomQuestion(domain, text)
+      if (result?.error) { setError(result.error); return }
+      setText('')
+      setOpen(false)
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2500)
+    })
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0, transition: { delay: 0.2 } }}
+      className="pt-8 border-t border-border space-y-3"
+    >
+      <div className="flex items-center justify-between">
+        <div className="space-y-0.5">
+          <p className="text-label">Your questions</p>
+          <p className="text-xs text-muted-foreground">Add questions you want to answer that aren&apos;t listed above.</p>
+        </div>
+        <button
+          onClick={() => { setOpen((v) => !v); setError(null) }}
+          className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+        >
+          {open ? 'Cancel' : '+ Add'}
+        </button>
+      </div>
+
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            key="form"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.22 }}
+            className="overflow-hidden"
+          >
+            <div className="space-y-3 pt-2">
+              <textarea
+                autoFocus
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                placeholder="What do you wish someone had asked you about this part of your life?"
+                rows={3}
+                className="w-full bg-input border border-border rounded-md px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-none"
+              />
+              {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
+              <button
+                onClick={handleSave}
+                disabled={!text.trim() || isPending}
+                className="bg-primary text-primary-foreground rounded-md px-4 py-2 text-xs font-medium hover:opacity-90 disabled:opacity-30 transition-opacity"
+              >
+                {isPending ? 'Adding…' : 'Add question'}
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {saved && (
+          <motion.p
+            key="saved"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="text-xs text-muted-foreground"
+          >
+            Question added — it will appear in the carousel above on the next page load.
+          </motion.p>
+        )}
+      </AnimatePresence>
+    </motion.div>
   )
 }

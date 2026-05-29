@@ -7,12 +7,21 @@ import { motion, AnimatePresence } from '@/components/ui/motion'
 const DESKTOP_NAV_ITEMS = [
   { href: '/app/dashboard', label: 'Home' },
   { href: '/app/interview', label: 'Capture' },
+  { href: '/app/memoir', label: 'Memoir' },
   { href: '/app/review', label: 'Review' },
+  { href: '/app/archive', label: 'Archive' },
   { href: '/app/lifemap', label: 'Life map' },
-  { href: '/app/values', label: 'Values' },
+  { href: '/app/letters', label: 'Letters' },
   { href: '/app/represent', label: 'Represent' },
   { href: '/app/settings', label: 'Settings' },
 ]
+
+const SearchIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="11" cy="11" r="8" />
+    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+  </svg>
+)
 
 const BOTTOM_NAV_ITEMS = [
   {
@@ -48,14 +57,12 @@ const BOTTOM_NAV_ITEMS = [
     ),
   },
   {
-    href: '/app/lifemap',
-    label: 'Life map',
+    href: '/app/memoir',
+    label: 'Memoir',
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-        <line x1="16" y1="2" x2="16" y2="6" />
-        <line x1="8" y1="2" x2="8" y2="6" />
-        <line x1="3" y1="10" x2="21" y2="10" />
+        <path d="M4 19.5A2.5 2.5 0 016.5 17H20" />
+        <path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z" />
       </svg>
     ),
   },
@@ -82,7 +89,7 @@ export function NavClient({ displayName, children }: Props) {
   return (
     <>
       <header className="border-b border-border">
-        <div className="mx-auto max-w-3xl px-6 h-14 flex items-center justify-between gap-6">
+        <div className="mx-auto max-w-3xl px-6 h-14 md:h-16 flex items-center justify-between gap-6">
           <Link href="/app/dashboard" className="text-sm font-medium tracking-[0.08em] text-foreground shrink-0">
             AEDRIN
           </Link>
@@ -95,13 +102,13 @@ export function NavClient({ displayName, children }: Props) {
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`relative text-xs pb-1 transition-colors ${active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                  className={`relative text-xs transition-colors ${active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
                 >
                   {item.label}
                   {active && (
                     <motion.div
                       layoutId="nav-underline"
-                      className="absolute bottom-0 left-0 right-0 h-px bg-foreground"
+                      className="absolute bottom-[-4px] left-0 right-0 h-px bg-foreground"
                       transition={{ type: 'spring', stiffness: 500, damping: 40 }}
                     />
                   )}
@@ -110,7 +117,18 @@ export function NavClient({ displayName, children }: Props) {
             })}
           </nav>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3 md:gap-4">
+            {/* Search — icon-only on mobile, icon+hint on desktop */}
+            <Link
+              href="/app/search"
+              className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
+              title="Search (⌘K)"
+              aria-label="Search"
+            >
+              <SearchIcon />
+              <span className="hidden md:inline text-[10px] text-muted-foreground/50 font-mono">⌘K</span>
+            </Link>
+
             <Link href="/app/profile" className="hidden md:block text-xs text-muted-foreground hover:text-foreground transition-colors truncate max-w-[120px]">
               {displayName}
             </Link>
