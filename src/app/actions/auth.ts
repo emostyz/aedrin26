@@ -9,6 +9,11 @@ export async function signup(_prevState: AuthState, formData: FormData): Promise
   const email = formData.get('email') as string
   const password = formData.get('password') as string
   const legalName = formData.get('legal_name') as string
+  // Optional gift-invitation token threaded through from /gift/[token] —
+  // see src/app/gift/[token]/page.tsx. When present, we route the user
+  // back through the claim page after auth instead of straight to onboarding,
+  // so the invitation gets claimed before the new user starts.
+  const giftToken = (formData.get('gift_token') as string | null)?.trim() || null
 
   if (!email || !password || !legalName) {
     return { error: 'All fields are required.' }
@@ -16,11 +21,19 @@ export async function signup(_prevState: AuthState, formData: FormData): Promise
 
   const supabase = await createClient()
 
+  // Where the magic-link email should land. If a gift token was supplied,
+  // route the email-confirm callback through the claim page so the gift
+  // attaches before onboarding starts.
+  const base = process.env.BASE_URL || 'https://www.aedrin.com'
+  const postAuthPath = giftToken ? `/gift/${encodeURIComponent(giftToken)}` : '/onboarding'
+  const emailRedirectTo = `${base}/auth/callback?next=${encodeURIComponent(postAuthPath)}`
+
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
     options: {
       data: { legal_name: legalName },
+      emailRedirectTo,
     },
   })
 
@@ -30,12 +43,15 @@ export async function signup(_prevState: AuthState, formData: FormData): Promise
 
   // If email confirmation is required, session is null — send them to the
   // "check your inbox" page. If confirmation is disabled in Supabase (common
-  // in dev), session is already populated and we can proceed to onboarding.
+  // in dev), session is already populated and we can proceed to onboarding —
+  // or, if there's a gift, to the claim page first.
   if (!data.session) {
-    redirect(`/auth/confirm?email=${encodeURIComponent(email)}`)
+    const confirmParams = new URLSearchParams({ email })
+    if (giftToken) confirmParams.set('gift', giftToken)
+    redirect(`/auth/confirm?${confirmParams.toString()}`)
   }
 
-  redirect('/onboarding')
+  redirect(postAuthPath)
 }
 
 export async function login(_prevState: AuthState, formData: FormData): Promise<AuthState> {

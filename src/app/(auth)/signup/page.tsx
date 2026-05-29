@@ -1,12 +1,20 @@
 'use client'
 
-import { useActionState } from 'react'
+import { useActionState, Suspense } from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { signup } from '@/app/actions/auth'
 import { motion } from '@/components/ui/motion'
 import { GoogleButton } from '@/components/auth/google-button'
 
-export default function SignupPage() {
+function SignupForm() {
+  const params = useSearchParams()
+  // Threaded in when the user arrives from /gift/[token] — we forward it
+  // through the server action so the new account claims the invitation
+  // before landing on onboarding.
+  const giftToken = params.get('gift') ?? ''
+  const recipientEmail = params.get('email') ?? ''
+
   const [state, action, pending] = useActionState(signup, undefined)
 
   return (
@@ -62,6 +70,10 @@ export default function SignupPage() {
           <div className="space-y-5">
             <GoogleButton label="Sign up with Google" />
             <form action={action} className="space-y-4">
+              {/* Carries a gift-invitation token through the auth roundtrip so
+                  the recipient claim runs immediately after sign-up. */}
+              {giftToken && <input type="hidden" name="gift_token" value={giftToken} />}
+
               <div className="space-y-1.5">
                 <label htmlFor="legal_name" className="text-label">Legal name</label>
                 <input
@@ -74,6 +86,7 @@ export default function SignupPage() {
                 <label htmlFor="email" className="text-label">Email</label>
                 <input
                   id="email" name="email" type="email" autoComplete="email" required
+                  defaultValue={recipientEmail}
                   className="w-full bg-input border border-border rounded-xl px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring transition-all"
                 />
               </div>
@@ -108,5 +121,16 @@ export default function SignupPage() {
         </motion.div>
       </div>
     </div>
+  )
+}
+
+// Suspense wrapper — useSearchParams requires it under the App Router.
+// The inner SignupForm reads the URL params (gift token, email pre-fill);
+// during static render those params are unavailable so it suspends.
+export default function SignupPage() {
+  return (
+    <Suspense fallback={null}>
+      <SignupForm />
+    </Suspense>
   )
 }

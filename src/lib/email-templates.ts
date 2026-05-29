@@ -392,3 +392,62 @@ export function accessDecisionEmail(approved: boolean, escalated: boolean): { su
     ),
   }
 }
+
+// ── Gift invitation (sender → recipient, e.g. child → parent) ─────────────────
+// The recipient has never heard of AEDRIN. The email's job is to make this
+// feel like a personal request from someone they love, NOT a product pitch.
+// The sender's voice comes first. The "what is this" only appears once the
+// recipient lands on the claim page.
+export function giftInvitationEmail(
+  senderName: string,
+  recipientName: string,
+  relationship: string,
+  senderNote: string | null,
+  claimUrl: string,
+): { subject: string; html: string } {
+  const firstName = recipientName.split(/\s+/)[0] || recipientName
+  // Relationship-aware framing — "your daughter" reads differently than "your friend".
+  const relationshipLine = (() => {
+    switch (relationship) {
+      case 'parent':      return `${senderName}, your child`
+      case 'grandparent': return `${senderName}, your grandchild`
+      case 'partner':     return `${senderName}, your partner`
+      case 'sibling':     return `${senderName}, your sibling`
+      case 'child':       return `${senderName}, your parent`
+      case 'friend':      return `${senderName}, your friend`
+      default:            return senderName
+    }
+  })()
+
+  const noteBlock = senderNote
+    ? `<blockquote style="margin:0 0 18px;padding:14px 16px;border-left:2px solid ${C.fg};background:${C.bg};color:${C.fg};font-size:15px;line-height:1.65;font-style:italic;">${esc(senderNote)}</blockquote>`
+    : ''
+
+  return {
+    subject: `${esc(senderName)} would love to know your story`,
+    html: shell(
+      h1(`A note from ${esc(relationshipLine)}.`) +
+      p(`Dear ${esc(firstName)},`) +
+      noteBlock +
+      p(`${esc(senderName)} set up something for you on AEDRIN — a quiet place where you can share the moments and lessons of your life, one question at a time. There's no pressure, no schedule. You answer when you feel like answering. Even one sentence is enough.`) +
+      p(`What you write will be preserved, beautifully, for the people who love you. Some of it will reach them now. Some only later. You decide.`) +
+      button(claimUrl, 'See what they wrote') +
+      p(`<span style="color:${C.faint};font-size:13px;">This is a private invitation. If you'd rather not, you can simply ignore this email — ${esc(senderName)} won't be notified.</span>`),
+    ),
+  }
+}
+
+// ── Gift claimed (back to the sender, on recipient sign-up) ──────────────────
+export function giftClaimedEmail(
+  senderFirstName: string,
+  recipientName: string,
+): { subject: string; html: string } {
+  return {
+    subject: `${esc(recipientName)} just opened your AEDRIN invitation`,
+    html: shell(
+      h1(`${esc(recipientName)} said yes.`) +
+      p(`Hi ${esc(senderFirstName)} — ${esc(recipientName)} signed up and has started exploring AEDRIN. You'll get a digest of what they share with you as it accumulates. There's no need to do anything right now.`) +
+      button(`${BASE_URL}/app/gift`, 'View your gifts'),
+    ),
+  }
+}

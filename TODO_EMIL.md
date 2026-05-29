@@ -4,7 +4,7 @@
 >
 > Claude maintains this file: new items get added (with steps + why) the moment they come up, and items get checked off when done.
 
-**Last updated:** 2026-05-29
+**Last updated:** 2026-05-29 (later)
 
 ---
 
@@ -129,6 +129,20 @@ That's it — no code change needed. After this, new signups will land directly 
 **Done when:** You see the column `theme_tag` in the `daily_prompts` table in Supabase.
 
 *(Note: existing prompt rows will have `theme_tag = null` — that's fine. Only new prompts generated after this migration will have the tag.)*
+
+---
+
+### 11. Run the gift-invitations migration in Supabase  →  *unblocks "Set up AEDRIN for someone you love"*
+**Why it matters:** This is the foundation of the **gift loop** — the single biggest move from "personal journaling app" to "category-winning intergenerational memory product." It lets one user (e.g. you) invite a parent, grandparent, or anyone whose story matters to them, via a personal email with a one-click claim link. The recipient signs up, the two accounts get linked, and you'll later receive a quarterly digest of what they've shared. The code, the email template, the sender form, the recipient claim page, and the auth handoff are all built. The `gift_invitations` table just needs to exist before any of it works.
+
+**Steps:**
+1. Go to **Supabase → SQL Editor → New query**.
+2. Paste and run the contents of `supabase/migrations/019_gift_invitations.sql` (it's in your repo).
+3. Click **Run**.
+
+**Done when:** You can go to `/app/gift` (linked from Settings), fill in the form for any email address you own, and receive the personal invitation email at that address.
+
+*(Note: For real gift emails to land in someone else's inbox you also need item #1 — verified Resend domain. Without that, only emails to `ermostrom@gmail.com` will actually arrive; everything else gets silently skipped in test mode.)*
 
 ---
 

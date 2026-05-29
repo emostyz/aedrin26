@@ -20,6 +20,11 @@ export type AccessRequestStatus =
 export type RiskLevel = 'low' | 'elevated' | 'high'
 export type RepDocumentType = 'government_id' | 'relationship_proof' | 'other'
 
+// ── Gift invitations ─────────────────────────────────────────────────────────
+export type GiftRelationship =
+  | 'parent' | 'grandparent' | 'partner' | 'sibling' | 'child' | 'friend' | 'other'
+export type GiftStatus = 'sent' | 'claimed' | 'declined' | 'expired'
+
 // ── Negotiation ──────────────────────────────────────────────────────────────
 export type NegotiationStatus = 'open' | 'resolved' | 'closed' | 'archived'
 export type ParticipantRole = 'initiator' | 'participant' | 'observer'
@@ -51,6 +56,15 @@ export interface FollowUpQuestion {
   type: 'freeform' | 'choice'
   options?: string[]   // 2–5 options, only when type === 'choice'
   placeholder?: string // hint text, only when type === 'freeform'
+}
+
+export interface CustomQuestion {
+  id: string
+  user_id: string
+  domain: Domain
+  text: string
+  ord: number
+  created_at: string
 }
 
 export interface Database {
@@ -266,6 +280,25 @@ export interface Database {
           updated_at?: string
         }
         Update: Partial<Database['public']['Tables']['channel_partners']['Insert']>
+      }
+      custom_questions: {
+        Row: {
+          id: string
+          user_id: string
+          domain: Domain
+          text: string
+          ord: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          domain: Domain
+          text: string
+          ord?: number
+          created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['custom_questions']['Insert']>
       }
       heirs: {
         Row: {
@@ -594,6 +627,37 @@ export interface Database {
           created_at?: string
         }
         Update: Partial<Database['public']['Tables']['negotiation_access_log']['Insert']>
+      }
+      gift_invitations: {
+        Row: {
+          id: string
+          sender_user_id: string
+          recipient_name: string
+          recipient_email: string
+          relationship: GiftRelationship
+          sender_note: string | null
+          claim_token: string
+          status: GiftStatus
+          claimed_by_user_id: string | null
+          claimed_at: string | null
+          expires_at: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          sender_user_id: string
+          recipient_name: string
+          recipient_email: string
+          relationship: GiftRelationship
+          sender_note?: string | null
+          claim_token?: string
+          status?: GiftStatus
+          claimed_by_user_id?: string | null
+          claimed_at?: string | null
+          expires_at?: string
+          created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['gift_invitations']['Insert']>
       }
     }
   }
