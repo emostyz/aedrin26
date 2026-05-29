@@ -41,6 +41,8 @@ export async function saveEntry(formData: FormData) {
   revalidatePath(`/app/interview/${domain}`)
   revalidatePath('/app/dashboard')
   revalidatePath('/app/review')
+  revalidatePath('/app/search')
+  revalidatePath('/app/profile')
 
   return { success: true }
 }
@@ -82,6 +84,7 @@ export async function updateEntry(entryId: string, content: string) {
 
   revalidatePath('/app/review')
   revalidatePath('/app/dashboard')
+  revalidatePath('/app/interview/[domain]', 'page')
 
   return { success: true }
 }
@@ -100,6 +103,84 @@ export async function updateSharingStatus(entryId: string, status: SharingStatus
   if (error) return { error: error.message }
 
   revalidatePath('/app/review')
+  return { success: true }
+}
+
+export async function deleteEntry(entryId: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Not authenticated.' }
+
+  const { error } = await supabase
+    .from('soul_entries')
+    .delete()
+    .eq('id', entryId)
+    .eq('user_id', user.id)
+
+  if (error) return { error: error.message }
+
+  revalidatePath('/app/review')
+  revalidatePath('/app/dashboard')
+  revalidatePath('/app/lifemap')
+  revalidatePath('/app/search')
+  revalidatePath('/app/profile')
+  return { success: true }
+}
+
+export async function saveLetter(recipientHeirId: string, content: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Not authenticated.' }
+
+  if (!content?.trim()) return { error: 'Letter cannot be empty.' }
+  if (!recipientHeirId) return { error: 'Recipient is required.' }
+
+  const MAX_CONTENT = 50_000
+  if (content.trim().length > MAX_CONTENT) {
+    return { error: `Letter is too long (max ${MAX_CONTENT.toLocaleString()} characters).` }
+  }
+
+  // Verify this heir belongs to the current user before writing
+  const { data: heir } = await supabase
+    .from('heirs')
+    .select('id')
+    .eq('id', recipientHeirId)
+    .eq('user_id', user.id)
+    .single()
+
+  if (!heir) return { error: 'Recipient not found.' }
+
+  const { error } = await supabase.from('soul_entries').insert({
+    user_id: user.id,
+    domain: 'messages',
+    content: content.trim(),
+    bound_recipient_id: recipientHeirId,
+    sharing_status: 'private',
+    source: 'typed',
+  })
+
+  if (error) return { error: error.message }
+
+  revalidatePath('/app/letters')
+  return { success: true }
+}
+
+export async function deleteLetter(entryId: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Not authenticated.' }
+
+  const { error } = await supabase
+    .from('soul_entries')
+    .delete()
+    .eq('id', entryId)
+    .eq('user_id', user.id)
+    .eq('domain', 'messages')
+    .not('bound_recipient_id', 'is', null)
+
+  if (error) return { error: error.message }
+
+  revalidatePath('/app/letters')
   return { success: true }
 }
 
