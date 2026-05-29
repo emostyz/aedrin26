@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from '@/components/ui/motion'
 import { generateValueSummary, saveValueSummary, approveValueSummary, deleteValueSummary } from '@/app/actions/values'
 import type { ValueSummary } from '@/app/actions/values'
@@ -24,6 +25,7 @@ export function ValuesEditor({
   neededEntries,
   neededDomains,
 }: Props) {
+  const router = useRouter()
   const [summary, setSummary] = useState<ValueSummary | null>(initialSummary)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft]     = useState(initialSummary?.content ?? '')
@@ -78,6 +80,7 @@ export function ValuesEditor({
       if (result.error) { setError(result.error); return }
       setSummary(null)
       setEditing(false)
+      router.refresh()
     })
   }
 

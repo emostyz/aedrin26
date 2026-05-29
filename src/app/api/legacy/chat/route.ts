@@ -46,13 +46,30 @@ export async function POST(request: NextRequest) {
   // ── Fetch all shareable soul entries in permitted domains ────────────────────
   const { data: entries } = await service
     .from('soul_entries')
-    .select('id, user_id, domain, content, prompt_id')
+    .select('id, user_id, domain, content, prompt_id, bound_recipient_id')
     .eq('user_id', deceasedUserId)
     .eq('sharing_status', 'shareable')
     .in('domain', allowedDomains)
-    .order('created_at', { ascending: true }) as { data: { id: string; user_id: string; domain: string; content: string; prompt_id: string | null }[] | null }
+    .order('created_at', { ascending: true }) as { data: { id: string; user_id: string; domain: string; content: string; prompt_id: string | null; bound_recipient_id: string | null }[] | null }
 
-  const corpus = entries ?? []
+  // ── Also fetch sealed final letters bound to THIS heir ───────────────────────
+  // Final letters live in soul_entries with a non-null bound_recipient_id and
+  // are normally invisible. When the bound recipient *is* the asking heir,
+  // post-memorialization they should be available to the legacy AI so the
+  // grieving heir can ask "did mom leave a message for me?" and get an answer.
+  const { data: boundLetters } = await service
+    .from('soul_entries')
+    .select('id, user_id, domain, content, prompt_id, bound_recipient_id')
+    .eq('user_id', deceasedUserId)
+    .eq('bound_recipient_id', resolvedHeirId) as { data: { id: string; user_id: string; domain: string; content: string; prompt_id: string | null; bound_recipient_id: string | null }[] | null }
+
+  // De-dupe in case a letter is shareable AND bound (shouldn't happen, but cheap to guard)
+  const seen = new Set<string>()
+  const corpus = [...(entries ?? []), ...(boundLetters ?? [])].filter((e) => {
+    if (seen.has(e.id)) return false
+    seen.add(e.id)
+    return true
+  })
 
   // ── Layer 4 guard: assert all fetched entries belong to deceasedUserId ────────
   // The service client bypasses RLS; we verify ownership explicitly so a query
@@ -76,7 +93,10 @@ export async function POST(request: NextRequest) {
     .join('\n\n')
 
   // ── §8.3 Legacy interaction prompt ──────────────────────────────────────────
-  const systemPrompt = `You are an AI representation built from ${name}'s recorded memories and reflections. You are not ${name}, not conscious, and must never claim to be.
+  const today = new Date().toISOString().slice(0, 10)
+  const systemPrompt = `Today's date: ${today}. Use this as the reference point for any age or year calculations.
+
+You are an AI representation built from ${name}'s recorded memories and reflections. You are not ${name}, not conscious, and must never claim to be.
 
 Answer using only the recorded material provided below. Quote or paraphrase what ${name} actually said or wrote.
 
@@ -138,11 +158,24 @@ If ANY check fails, return {"pass": false, "reason": "<which check failed>"}.`,
         }],
       })
 
-      let validationResult = { pass: true, reason: 'ok' }
+      // Fail CLOSED on parse error: if the validator's response can't be parsed
+      // we treat it as a fail and force a retry/decline. The previous behavior
+      // (pass on parse error) defeated the §8.5 safety rail — a malformed
+      // validator response would let an unvetted answer through.
+      let validationResult: { pass: boolean; reason: string } = { pass: false, reason: 'validator unparseable' }
       try {
-        const raw = validation.choices[0]?.message?.content ?? '{"pass":true}'
-        validationResult = JSON.parse(raw.replace(/```json\n?|\n?```/g, '').trim())
-      } catch { /* parsing failed — treat as passed to avoid silent failure */ }
+        const raw = validation.choices[0]?.message?.content ?? ''
+        const cleaned = raw.replace(/```json\n?|\n?```/g, '').trim()
+        if (cleaned) {
+          const parsed = JSON.parse(cleaned) as { pass?: unknown; reason?: unknown }
+          validationResult = {
+            pass: parsed.pass === true,
+            reason: typeof parsed.reason === 'string' ? parsed.reason : 'no reason',
+          }
+        }
+      } catch (parseErr) {
+        console.warn('[legacy-chat] validator JSON parse failed, failing closed:', parseErr)
+      }
 
       if (validationResult.pass) {
         answer = candidate
@@ -173,10 +206,20 @@ async function appendAccessLog(
   entryIds: string[],
   question: string,
 ) {
-  await service.from('legacy_access_log').insert({
+  const { error } = await service.from('legacy_access_log').insert({
     deceased_user_id: deceasedUserId,
     heir_id: heirId,
     entry_ids_accessed: entryIds,
     interaction_summary: question.slice(0, 500),
   })
+  // Audit-trail writes that fail silently break a core compliance promise —
+  // surface them in logs so they show up in monitoring even though we don't
+  // block the user-facing response on it.
+  if (error) {
+    console.error('[legacy-chat] access log insert failed:', error.message, {
+      deceasedUserId,
+      heirId,
+      entryCount: entryIds.length,
+    })
+  }
 }
