@@ -4,6 +4,9 @@ import { createClient } from '@/lib/supabase/server'
 import { ensureUserProfile } from '@/lib/supabase/ensure-profile'
 import { logout } from '@/app/actions/auth'
 import { NavClient } from '@/components/nav-client'
+import { GlobalSearchShortcut } from '@/components/search/global-search-shortcut'
+import { QuickCapture } from '@/components/capture/quick-capture'
+import { ShortcutsHelp } from '@/components/shortcuts-help'
 
 type Profile = {
   legal_name: string
@@ -45,6 +48,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="min-h-dvh flex flex-col">
+      <GlobalSearchShortcut />
       <NavClient displayName={displayName}>
         <form action={logout}>
           <button type="submit" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
@@ -57,6 +61,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <main className="flex-1 mx-auto w-full max-w-3xl px-6 py-12 pb-24 md:pb-12">
         {children}
       </main>
+
+      {/* Global floating quick-capture button (N shortcut) */}
+      <QuickCapture />
+
+      {/* Keyboard shortcuts help (? shortcut) */}
+      <ShortcutsHelp />
     </div>
   )
 }

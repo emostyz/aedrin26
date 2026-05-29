@@ -1,15 +1,9 @@
 import { createClient } from '@/lib/supabase/server'
-import { EntryCard } from '@/components/review/entry-card'
-import { FadeUp, Stagger, StaggerItem } from '@/components/ui/motion'
+import { FadeUp } from '@/components/ui/motion'
+import { ReviewClient } from '@/components/review/review-client'
 import type { Database, Domain } from '@/lib/supabase/types'
 
 type SoulEntry = Database['public']['Tables']['soul_entries']['Row']
-
-const DOMAIN_LABELS: Record<Domain, string> = {
-  childhood: 'Childhood', family: 'Family', career: 'Career',
-  values: 'Values', beliefs: 'Beliefs', lessons: 'Lessons',
-  messages: 'Messages', other: 'Other',
-}
 
 export default async function ReviewPage() {
   const supabase = await createClient()
@@ -20,6 +14,7 @@ export default async function ReviewPage() {
     .from('soul_entries')
     .select('*')
     .eq('user_id', user.id)
+    .is('bound_recipient_id', null)   // exclude final letters — they live in /app/letters
     .order('created_at', { ascending: false })
 
   if (error) return (
@@ -30,7 +25,7 @@ export default async function ReviewPage() {
 
   const entries = (data ?? []) as SoulEntry[]
 
-  // Collect unique prompt IDs so we can fetch their text in two parallel lookups
+  // Collect unique prompt IDs so we can fetch their text
   const interviewIds  = [...new Set(entries.map((e) => e.prompt_id).filter(Boolean))] as string[]
   const dailyIds      = [...new Set(entries.map((e) => e.daily_prompt_id).filter(Boolean))] as string[]
 
@@ -50,15 +45,20 @@ export default async function ReviewPage() {
     (dailyRes.data ?? []).map((r: { id: string; prompt_text: string }) => [r.id, r.prompt_text])
   )
 
-  const byDomain = entries.reduce<Record<string, SoulEntry[]>>((acc, e) => {
-    if (!acc[e.domain]) acc[e.domain] = []
-    acc[e.domain]!.push(e)
-    return acc
-  }, {})
-  const domains = Object.keys(byDomain) as Domain[]
+  const promptMap = Object.fromEntries(
+    entries.map((e) => [
+      e.id,
+      (e.prompt_id       ? interviewMap[e.prompt_id]       : null) ??
+      (e.daily_prompt_id ? dailyMap[e.daily_prompt_id]     : null) ??
+      null,
+    ])
+  ) as Record<string, string | null>
 
   const privateCount   = entries.filter((e) => e.sharing_status === 'private').length
   const shareableCount = entries.filter((e) => e.sharing_status === 'shareable').length
+  const totalWords     = entries.reduce((sum, e) => sum + e.content.trim().split(/\s+/).filter(Boolean).length, 0)
+
+  const domains = [...new Set(entries.map((e) => e.domain))] as Domain[]
 
   return (
     <div className="space-y-12">
@@ -69,7 +69,7 @@ export default async function ReviewPage() {
         </p>
         {entries.length > 0 && (
           <p className="text-xs text-muted-foreground">
-            {shareableCount} for heirs · {privateCount} only you
+            {totalWords.toLocaleString()} words · {shareableCount} for heirs · {privateCount} only you
           </p>
         )}
       </FadeUp>
@@ -84,26 +84,11 @@ export default async function ReviewPage() {
           </div>
         </FadeUp>
       ) : (
-        <Stagger className="space-y-10">
-          {domains.map((domain) => (
-            <StaggerItem key={domain}>
-              <section className="space-y-3">
-                <p className="text-label">{DOMAIN_LABELS[domain] ?? domain}</p>
-                <div className="space-y-2">
-                  {byDomain[domain]!.map((entry) => {
-                    const promptText =
-                      (entry.prompt_id       ? interviewMap[entry.prompt_id]       : null) ??
-                      (entry.daily_prompt_id ? dailyMap[entry.daily_prompt_id]     : null) ??
-                      null
-                    return (
-                      <EntryCard key={entry.id} entry={entry} promptText={promptText} />
-                    )
-                  })}
-                </div>
-              </section>
-            </StaggerItem>
-          ))}
-        </Stagger>
+        <ReviewClient
+          entries={entries}
+          promptMap={promptMap}
+          domains={domains}
+        />
       )}
     </div>
   )

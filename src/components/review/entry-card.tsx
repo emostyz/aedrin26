@@ -2,7 +2,9 @@
 
 import { useState, useTransition, useRef } from 'react'
 import { motion, AnimatePresence } from '@/components/ui/motion'
-import { updateSharingStatus, updateEntry } from '@/app/actions/entries'
+import { updateSharingStatus, updateEntry, deleteEntry } from '@/app/actions/entries'
+import { createShareLink } from '@/app/actions/share-entry'
+import { ReadingMode } from './reading-mode'
 import type { Database, Domain } from '@/lib/supabase/types'
 
 type Entry = Database['public']['Tables']['soul_entries']['Row']
@@ -31,14 +33,19 @@ function readingTime(words: number) {
 }
 
 
-export function EntryCard({ entry, promptText }: { entry: Entry; promptText?: string | null }) {
+export function EntryCard({ entry, promptText, onDeleted, alwaysShowControls }: { entry: Entry; promptText?: string | null; onDeleted?: () => void; alwaysShowControls?: boolean }) {
   const [isPending, startTransition] = useTransition()
+  const [isSharing, startSharing] = useTransition()
   const [expanded, setExpanded]     = useState(false)
   const [isEditing, setIsEditing]   = useState(false)
+  const [isReading, setIsReading]   = useState(false)
   const [editContent, setEditContent] = useState(entry.content)
   const [savedContent, setSavedContent] = useState(entry.content)
   const [editError, setEditError]   = useState<string | null>(null)
   const [savedBrief, setSavedBrief] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleted, setDeleted]       = useState(false)
+  const [sharecopied, setShareCopied] = useState(false)
   const textareaRef                 = useRef<HTMLTextAreaElement>(null)
 
   const isShareable = entry.sharing_status === 'shareable'
@@ -85,11 +92,58 @@ export function EntryCard({ entry, promptText }: { entry: Entry; promptText?: st
     })
   }
 
+  function handleDelete() {
+    if (!confirmDelete) { setConfirmDelete(true); return }
+    startTransition(async () => {
+      const result = await deleteEntry(entry.id)
+      if (result?.error) { setEditError(result.error); setConfirmDelete(false); return }
+      setDeleted(true)
+      onDeleted?.()
+    })
+  }
+
+  function handleShareLink() {
+    startSharing(async () => {
+      const result = await createShareLink(entry.id)
+      if (!result.url) return
+      try {
+        await navigator.clipboard.writeText(result.url)
+        setShareCopied(true)
+        setTimeout(() => setShareCopied(false), 2500)
+      } catch {
+        // Clipboard not available — open in new tab so user can copy manually
+        window.open(result.url, '_blank')
+      }
+    })
+  }
+
+  if (deleted) return null
+
+  const readingEntry = {
+    id: entry.id,
+    domain: entry.domain as Domain,
+    content: savedContent,
+    created_at: entry.created_at,
+    sharing_status: entry.sharing_status,
+  }
+
   return (
+    <>
+      <AnimatePresence>
+        {isReading && (
+          <ReadingMode
+            entry={readingEntry}
+            promptText={promptText}
+            onClose={() => setIsReading(false)}
+          />
+        )}
+      </AnimatePresence>
+
     <motion.div
       layout
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.97, transition: { duration: 0.18 } }}
       transition={{ duration: 0.3 }}
       className={`group border border-l-2 border-border rounded-lg px-5 py-4 space-y-3 transition-colors duration-200 ${
         isEditing ? 'border-foreground/20' : 'hover:border-foreground/10'
@@ -219,14 +273,53 @@ export function EntryCard({ entry, promptText }: { entry: Entry; promptText?: st
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Edit button — always visible on hover, prominent when editing is available */}
+          {/* Read button — opens full-screen reading mode */}
+          {!isEditing && words >= 20 && (
+            <button
+              onClick={() => setIsReading(true)}
+              className={`text-[10px] text-muted-foreground/40 hover:text-foreground transition-all duration-150 ${alwaysShowControls ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+              aria-label="Reading mode"
+            >
+              Read
+            </button>
+          )}
+
+          {/* Share link button */}
+          {!isEditing && !entry.bound_recipient_id && (
+            <button
+              onClick={handleShareLink}
+              disabled={isSharing}
+              className={`text-[10px] transition-all duration-150 disabled:opacity-30 ${alwaysShowControls ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} ${sharecopied ? 'text-foreground' : 'text-muted-foreground/40 hover:text-foreground'}`}
+              aria-label="Share memory"
+            >
+              {isSharing ? '…' : sharecopied ? '✓ Link copied' : 'Share'}
+            </button>
+          )}
+
+          {/* Edit button */}
           {!isEditing && (
             <button
               onClick={openEdit}
-              className="text-[10px] text-muted-foreground/40 opacity-0 group-hover:opacity-100 hover:text-foreground transition-all duration-150"
+              className={`text-[10px] text-muted-foreground/40 hover:text-foreground transition-all duration-150 ${alwaysShowControls ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
               aria-label="Edit entry"
             >
               Edit
+            </button>
+          )}
+
+          {/* Delete button — requires two clicks (confirm step) */}
+          {!isEditing && (
+            <button
+              onClick={handleDelete}
+              disabled={isPending}
+              className={`text-[10px] transition-all duration-150 disabled:opacity-30 ${alwaysShowControls ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} ${
+                confirmDelete
+                  ? 'text-destructive hover:text-destructive'
+                  : 'text-muted-foreground/40 hover:text-destructive'
+              }`}
+              onBlur={() => setConfirmDelete(false)}
+            >
+              {confirmDelete ? 'Sure?' : 'Delete'}
             </button>
           )}
 
@@ -246,5 +339,6 @@ export function EntryCard({ entry, promptText }: { entry: Entry; promptText?: st
         </div>
       </div>
     </motion.div>
+    </>
   )
 }
