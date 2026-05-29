@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { InterviewDomain } from '@/components/interview/interview-domain'
 import { getOrCreateTodaysPrompt } from '@/app/actions/daily-prompt'
+import { getOrRefreshDomainNarrative } from '@/app/actions/domain-narrative'
 import type { Database, Domain } from '@/lib/supabase/types'
 
 type Prompt = Database['public']['Tables']['interview_prompts']['Row']
@@ -42,7 +43,7 @@ export default async function InterviewDomainPage({ params }: Props) {
   }
   const profileField = PROFILE_CONTEXT_FIELD[domain]
 
-  const [promptsResult, entriesResult, todayResult, profileResult] = await Promise.all([
+  const [promptsResult, entriesResult, todayResult, profileResult, customQResult, narrativeResult] = await Promise.all([
     supabase
       .from('interview_prompts')
       .select('*')
@@ -54,15 +55,39 @@ export default async function InterviewDomainPage({ params }: Props) {
       .select('*')
       .eq('user_id', user.id)
       .eq('domain', domain)
+      .is('bound_recipient_id', null)   // exclude final letters (shown in /app/letters)
       .order('created_at', { ascending: false }),
     getOrCreateTodaysPrompt(),
     profileField
       ? supabase.from('users').select(profileField).eq('id', user.id).single()
       : Promise.resolve({ data: null }),
+    supabase
+      .from('custom_questions')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('domain', domain)
+      .order('created_at', { ascending: true }),
+    (['childhood', 'family', 'career', 'other'] as Domain[]).includes(domain)
+      ? getOrRefreshDomainNarrative(domain)
+      : Promise.resolve({ narrative: null, entryCount: 0 }),
   ])
 
-  const prompts = (promptsResult.data ?? []) as Prompt[]
+  const systemPrompts = (promptsResult.data ?? []) as Prompt[]
   const existingEntries = (entriesResult.data ?? []) as SoulEntry[]
+
+  // Merge custom questions into the prompts list (after system prompts)
+  const customQRows = (customQResult.data ?? []) as { id: string; domain: Domain; text: string; ord: number; created_at: string }[]
+  const customPrompts: Prompt[] = customQRows.map((q, i) => ({
+    id: q.id,
+    domain: q.domain,
+    text: q.text,
+    version: 1,
+    ord: 9000 + i, // Place after all system prompts
+    active: true,
+    created_at: q.created_at,
+    updated_at: q.created_at,
+  }))
+  const prompts = [...systemPrompts, ...customPrompts]
 
   // Expose the daily prompt if it's in this domain
   const dailyPrompt =
@@ -81,6 +106,8 @@ export default async function InterviewDomainPage({ params }: Props) {
     other:   'Your life description',
   }
 
+  const domainNarrative = narrativeResult?.narrative ?? null
+
   return (
     <InterviewDomain
       domain={domain}
@@ -93,6 +120,7 @@ export default async function InterviewDomainPage({ params }: Props) {
           ? { label: PROFILE_CONTEXT_LABEL[domain] ?? 'From your profile', text: profileContextText }
           : null
       }
+      domainNarrative={domainNarrative ? { content: domainNarrative.content, createdAt: domainNarrative.createdAt } : null}
     />
   )
 }
