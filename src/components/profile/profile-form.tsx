@@ -24,18 +24,22 @@ export function ProfileForm({ legalName, displayName, dob, photoUrl }: Props) {
     setUploadError(null)
     setUploading(true)
     try {
-      // Send raw binary body — avoids multipart/FormData parsing issues in dev
+      // Send raw binary body — avoids multipart/FormData parsing issues in dev.
+      // Note: Content-Length is a forbidden browser header; the server validates
+      // the actual byte length from the body instead.
       const res = await fetch('/api/profile/photo', {
         method: 'POST',
-        headers: {
-          'Content-Type': file.type,
-          'Content-Length': String(file.size),
-        },
+        headers: { 'Content-Type': file.type },
         body: file,
       })
       const json = await res.json()
-      if (json.error) { setUploadError(json.error); return }
+      if (!res.ok || json.error) {
+        setUploadError(json.error ?? `Upload failed (${res.status}).`)
+        return
+      }
       setPhoto(json.url)
+    } catch {
+      setUploadError('Upload failed — check your connection and try again.')
     } finally {
       setUploading(false)
     }

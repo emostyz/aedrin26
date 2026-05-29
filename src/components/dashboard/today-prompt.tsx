@@ -280,12 +280,33 @@ export function TodayPrompt({ promptId, promptText, domain, existingEntry, autoW
               <textarea
                 autoFocus
                 value={content}
-                onChange={(e) => setContent(e.target.value)}
+                onChange={(e) => {
+                  setContent(e.target.value)
+                  // Auto-resize
+                  e.target.style.height = 'auto'
+                  e.target.style.height = `${e.target.scrollHeight}px`
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); handleSave() }
+                }}
                 placeholder="Write your response…"
                 rows={5}
+                style={{ minHeight: '120px' }}
                 className="w-full bg-input border border-border rounded-lg px-4 py-3.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-none transition-all"
               />
-              <SoundwaveRecorder onTranscript={(t) => setContent(t)} disabled={isPending} canvasHeight={40} />
+              {/* Live word count */}
+              {content.trim() && (
+                <div className="flex items-center justify-between">
+                  <SoundwaveRecorder onTranscript={(t) => setContent(t)} disabled={isPending} canvasHeight={40} />
+                  <span className="text-[10px] text-muted-foreground/50">
+                    {content.trim().split(/\s+/).filter(Boolean).length} words
+                    <span className="text-muted-foreground/30 ml-2">⌘↵ to save</span>
+                  </span>
+                </div>
+              )}
+              {!content.trim() && (
+                <SoundwaveRecorder onTranscript={(t) => setContent(t)} disabled={isPending} canvasHeight={40} />
+              )}
               {error && <p className="text-xs text-destructive">{error}</p>}
               <div className="flex items-center gap-3">
                 <button

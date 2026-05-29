@@ -11,6 +11,9 @@ import { getOrCreateTodaysInsight } from '@/app/actions/daily-insight'
 import { getHorizonItems } from '@/app/actions/horizon'
 import type { Domain } from '@/lib/supabase/types'
 import { StreakTracker, type StreakState } from '@/components/dashboard/streak-tracker'
+import { OnThisDay } from '@/components/dashboard/on-this-day'
+import { Milestones } from '@/components/dashboard/milestones'
+import { WordGoal } from '@/components/dashboard/word-goal'
 
 // Domain metadata — colour ring for the completeness arc
 const DOMAINS: { domain: Domain; label: string; color: string }[] = [
@@ -101,25 +104,77 @@ export default async function DashboardPage({
   const service = createServiceClient()
 
   // Run all data fetches in parallel, including AI generation for today's prompt + insight
-  const [entriesResult, profileResult, legacyResult, todayPromptResult, todayInsightResult, horizonItems, recentEntriesResult] = await Promise.all([
-    supabase.from('soul_entries').select('id, domain, content, daily_prompt_id').eq('user_id', user.id),
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString()
+  const oneYearAgo   = new Date(Date.now() - 365 * 24 * 3600 * 1000).toISOString()
+
+  // "On this day" — entries written on this same calendar month+day in previous years
+  const todayForQuery = new Date()
+  const onThisDayFilter = (() => {
+    const mm = String(todayForQuery.getUTCMonth() + 1).padStart(2, '0')
+    const dd = String(todayForQuery.getUTCDate()).padStart(2, '0')
+    // Build OR filter for years 1–7 back
+    const parts = Array.from({ length: 7 }, (_, i) => {
+      const yr = todayForQuery.getUTCFullYear() - (i + 1)
+      return `and(created_at.gte.${yr}-${mm}-${dd}T00:00:00.000Z,created_at.lte.${yr}-${mm}-${dd}T23:59:59.999Z)`
+    })
+    return parts.join(',')
+  })()
+
+  // Batch A — primary data + AI (9 items; TS Promise.all inference works cleanly up to ~9 mixed types)
+  const [entriesResult, profileResult, legacyResult, todayPromptResult, todayInsightResult, horizonItems, recentEntriesResult, pastEntriesResult, onThisDayResult] = await Promise.all([
+    supabase.from('soul_entries').select('id, domain, content, daily_prompt_id, created_at').eq('user_id', user.id).is('bound_recipient_id', null).order('created_at', { ascending: false }),
     supabase.from('users').select('account_state, legal_name, display_name, setup_complete').eq('id', user.id).single(),
     service.from('heirs').select('id, user_id').eq('email', user.email!.toLowerCase()).eq('access_status', 'active'),
     getOrCreateTodaysPrompt(),
     getOrCreateTodaysInsight(),
     getHorizonItems(),
+    // Streak: pull all entries from last 366 days so the count is never capped
     supabase.from('soul_entries')
       .select('created_at')
       .eq('user_id', user.id)
-      .gte('created_at', new Date(Date.now() - 14 * 24 * 3600 * 1000).toISOString())
+      .gte('created_at', new Date(Date.now() - 366 * 24 * 3600 * 1000).toISOString())
+      .order('created_at', { ascending: false }),
+    // Past entries for the "From your journal" card — older than 7 days, up to 1 year back
+    supabase.from('soul_entries')
+      .select('id, domain, content, created_at')
+      .eq('user_id', user.id)
+      .is('bound_recipient_id', null)
+      .lt('created_at', sevenDaysAgo)
+      .gte('created_at', oneYearAgo)
+      .order('created_at', { ascending: false })
+      .limit(20),
+    // "On this day" — same calendar date, previous years
+    supabase.from('soul_entries')
+      .select('id, domain, content, created_at')
+      .eq('user_id', user.id)
+      .is('bound_recipient_id', null)
+      .or(onThisDayFilter)
       .order('created_at', { ascending: false }),
   ])
 
-  const entries = (entriesResult.data ?? []) as { id: string; domain: Domain; content: string; daily_prompt_id: string | null }[]
+  // Batch B — heir count for milestones (separate so Promise.all tuple stays < 10)
+  const heirsResult = await supabase.from('heirs').select('id').eq('user_id', user.id)
+
+  const entries = (entriesResult.data ?? []) as { id: string; domain: Domain; content: string; daily_prompt_id: string | null; created_at: string }[]
   const profile = profileResult.data as { account_state: string; legal_name: string; display_name: string | null; setup_complete: boolean } | null
   const legacyHeirs = (legacyResult.data ?? []) as { id: string; user_id: string }[]
   const todayPrompt = todayPromptResult.prompt
   const todayInsight = todayInsightResult.insight
+
+  // "From your journal" — a past entry that rotates deterministically by day
+  const pastEntries = (pastEntriesResult.data ?? []) as { id: string; domain: Domain; content: string; created_at: string }[]
+  const pastEntry = (() => {
+    if (pastEntries.length === 0) return null
+    const today = new Date()
+    const seed  = today.getFullYear() * 1000 + today.getMonth() * 31 + today.getDate()
+    return pastEntries[seed % pastEntries.length] ?? null
+  })()
+
+  // "On this day" — entries from same calendar date in previous years
+  const onThisDayEntries = (onThisDayResult.data ?? []) as { id: string; domain: Domain; content: string; created_at: string }[]
+
+  // Heir count for milestones
+  const heirCount = (heirsResult.data ?? []).length
 
   // Check if today's prompt has already been answered
   const todayAnsweredEntry = todayPrompt
@@ -168,6 +223,12 @@ export default async function DashboardPage({
     return sum + e.content.trim().split(/\s+/).filter(Boolean).length
   }, 0)
   const filledDomains = DOMAINS.filter((d) => (countByDomain[d.domain] ?? 0) > 0).length
+
+  // Today's word count (for the daily word goal widget)
+  const todayStr = new Date().toISOString().slice(0, 10)
+  const wordsWrittenToday = entries
+    .filter((e) => e.created_at.slice(0, 10) === todayStr)
+    .reduce((sum, e) => sum + e.content.trim().split(/\s+/).filter(Boolean).length, 0)
 
   // Resolve legacy_active accounts for this heir
   const legacyAccess: { userId: string; name: string }[] = []
@@ -292,8 +353,8 @@ export default async function DashboardPage({
                     <Link href="/app/interview" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
                       Keep going in Capture →
                     </Link>
-                    <Link href="/app/review" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
-                      Review your entries →
+                    <Link href="/app/memoir" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                      Read your memoir →
                     </Link>
                     <Link href="/app/lifemap" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
                       Open your life map →
@@ -316,17 +377,50 @@ export default async function DashboardPage({
         )}
       </div>
 
-      {/* ── Streak tracker ──────────────────────────────────────────── */}
+      {/* ── Streak tracker + daily word goal ───────────────────────── */}
       <StreakTracker
         activeDates={activeDates}
         streakDays={streakDays}
         streakState={streakState}
       />
 
+      {/* Daily word goal */}
+      <FadeUp delay={0.1}>
+        <div className="border border-border/50 rounded-xl px-5 py-4">
+          <WordGoal wordsWrittenToday={wordsWrittenToday} />
+        </div>
+      </FadeUp>
+
       {/* ── Horizon ─────────────────────────────────────────────────── */}
       <FadeUp delay={0.15}>
         <HorizonPanel initialItems={horizonItems} />
       </FadeUp>
+
+      {/* ── From your journal ──────────────────────────────────────── */}
+      {pastEntry && (
+        <FadeUp delay={0.17}>
+          <Link
+            href={`/app/interview/${pastEntry.domain}`}
+            className="group block border border-border/60 rounded-xl px-5 py-4 space-y-2.5 hover:border-foreground/15 hover:bg-surface/30 transition-all"
+          >
+            <div className="flex items-center justify-between gap-4">
+              <p className="text-label">From your journal</p>
+              <span className="text-[10px] text-muted-foreground/50 shrink-0">
+                {new Date(pastEntry.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+              </span>
+            </div>
+            <p className="text-sm text-foreground/70 leading-relaxed line-clamp-3 font-light">
+              {pastEntry.content}
+            </p>
+            <p className="text-[10px] text-muted-foreground/40 group-hover:text-muted-foreground transition-colors capitalize">
+              {pastEntry.domain} · Revisit →
+            </p>
+          </Link>
+        </FadeUp>
+      )}
+
+      {/* ── On this day ───────────────────────────────────────────── */}
+      <OnThisDay entries={onThisDayEntries} />
 
       {/* ── Soul Profile ─────────────────────────────────────────────── */}
       <FadeUp delay={0.18}>
@@ -393,18 +487,81 @@ export default async function DashboardPage({
               )
             })}
           </Stagger>
+
+          {/* Milestones */}
+          <Milestones
+            totalEntries={totalEntries}
+            totalWords={totalWords}
+            domainsExplored={filledDomains}
+            heirCount={heirCount}
+            streakDays={streakDays}
+          />
         </div>
       </FadeUp>
 
+      {/* ── Recently captured ──────────────────────────────────────── */}
+      {entries.length > 0 && (
+        <FadeUp delay={0.22}>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <p className="text-label shrink-0">Recently captured</p>
+                <div className="flex-1 h-px bg-border" />
+              </div>
+              <Link href="/app/review" className="text-xs text-muted-foreground hover:text-foreground transition-colors ml-4 shrink-0">
+                See all →
+              </Link>
+            </div>
+            <div className="space-y-2">
+              {entries.slice(0, 3).map((entry) => {
+                const ago = (() => {
+                  const ms = Date.now() - new Date(entry.created_at).getTime()
+                  const mins = Math.floor(ms / 60_000)
+                  const hrs  = Math.floor(ms / 3_600_000)
+                  const days = Math.floor(ms / 86_400_000)
+                  if (mins < 60) return mins <= 1 ? 'just now' : `${mins}m ago`
+                  if (hrs  < 24) return `${hrs}h ago`
+                  if (days < 7)  return `${days}d ago`
+                  return new Date(entry.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                })()
+                const snippet = entry.content.replace(/\n+/g, ' ').slice(0, 120)
+                const label = entry.domain.charAt(0).toUpperCase() + entry.domain.slice(1)
+                return (
+                  <Link
+                    key={entry.id}
+                    href={`/app/interview/${entry.domain}`}
+                    className="group flex items-start gap-3 rounded-xl border border-border px-4 py-3 hover:border-foreground/20 hover:bg-surface transition-all"
+                  >
+                    <span className="mt-0.5 text-[9px] uppercase tracking-widest text-muted-foreground border border-border rounded px-1.5 py-0.5 shrink-0 group-hover:border-foreground/20 transition-colors">
+                      {label}
+                    </span>
+                    <p className="text-sm text-muted-foreground leading-relaxed flex-1 truncate">
+                      {snippet}{entry.content.length > 120 ? '…' : ''}
+                    </p>
+                    <span className="text-[10px] text-muted-foreground/60 shrink-0 mt-0.5">{ago}</span>
+                  </Link>
+                )
+              })}
+            </div>
+          </div>
+        </FadeUp>
+      )}
+
       {/* ── Quick links ──────────────────────────────────────────────── */}
       <FadeUp delay={0.25}>
-        <div className="flex flex-wrap gap-6 text-xs text-muted-foreground border-t border-border pt-8">
-          <Link href="/app/review"  className="hover:text-foreground transition-colors">Review entries</Link>
-          <Link href="/app/lifemap" className="hover:text-foreground transition-colors">Life map</Link>
-          <Link href="/app/values"  className="hover:text-foreground transition-colors">Values</Link>
-          <Link href="/app/settings" className="hover:text-foreground transition-colors">Heirs & executors</Link>
-          <Link href="/app/export"  className="hover:text-foreground transition-colors">Export data</Link>
-          <Link href="/app/profile" className="hover:text-foreground transition-colors">Profile</Link>
+        <div className="flex flex-wrap gap-x-6 gap-y-2 text-xs text-muted-foreground border-t border-border pt-8">
+          <Link href="/app/memoir"         className="hover:text-foreground transition-colors">Your memoir</Link>
+          <Link href="/app/memoir/people"  className="hover:text-foreground transition-colors">People in your story</Link>
+          <Link href="/app/review"         className="hover:text-foreground transition-colors">Review entries</Link>
+          <Link href="/app/archive"        className="hover:text-foreground transition-colors">Archive</Link>
+          <Link href="/app/interview/chat" className="hover:text-foreground transition-colors">AI memoir chat</Link>
+          <Link href="/app/search"         className="hover:text-foreground transition-colors">Search</Link>
+          <Link href="/app/lifemap"        className="hover:text-foreground transition-colors">Life map</Link>
+          <Link href="/app/values"         className="hover:text-foreground transition-colors">Values</Link>
+          <Link href="/app/letters"        className="hover:text-foreground transition-colors">Final letters</Link>
+          <Link href="/app/settings"       className="hover:text-foreground transition-colors">Heirs & executors</Link>
+          <Link href="/app/export"         className="hover:text-foreground transition-colors">Export data</Link>
+          <Link href="/app/profile"        className="hover:text-foreground transition-colors">Profile</Link>
         </div>
       </FadeUp>
     </div>
