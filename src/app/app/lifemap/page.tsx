@@ -1,16 +1,28 @@
 import { createClient } from '@/lib/supabase/server'
 import { Timeline } from '@/components/lifemap/timeline'
 import { FadeUp } from '@/components/ui/motion'
+import type { Database } from '@/lib/supabase/types'
+
+type SoulEntry = Pick<
+  Database['public']['Tables']['soul_entries']['Row'],
+  'id' | 'domain' | 'content' | 'created_at'
+>
 
 export default async function LifeMapPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
 
-  const [{ data, error }, { count: entryCount }] = await Promise.all([
+  const [{ data, error }, { data: entriesData }] = await Promise.all([
     supabase.from('life_events').select('*').eq('user_id', user.id)
       .order('event_date', { ascending: true, nullsFirst: false }),
-    supabase.from('soul_entries').select('id', { count: 'exact', head: true }).eq('user_id', user.id),
+    // Fetch entries for the memory layer — exclude letter-bound entries (private letters)
+    supabase.from('soul_entries')
+      .select('id, domain, content, created_at')
+      .eq('user_id', user.id)
+      .is('bound_recipient_id', null)
+      .order('created_at', { ascending: false })
+      .limit(200),
   ])
 
   if (error) return (
@@ -27,12 +39,13 @@ export default async function LifeMapPage() {
           The moments that shaped you.
         </p>
         <p className="text-sm text-muted-foreground leading-relaxed max-w-md">
-          Key events extracted from your Capture sessions, arranged in time. The more you share in interviews, the richer this becomes.
+          Milestones, memories, and stories — arranged in time. The more you share, the richer this becomes.
         </p>
       </FadeUp>
       <Timeline
         initialEvents={(data ?? []) as Parameters<typeof Timeline>[0]['initialEvents']}
-        hasSoulEntries={(entryCount ?? 0) > 0}
+        soulEntries={(entriesData ?? []) as SoulEntry[]}
+        hasSoulEntries={(entriesData ?? []).length > 0}
       />
     </div>
   )

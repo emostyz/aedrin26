@@ -8,7 +8,15 @@ const geistMono = Geist_Mono({ subsets: ["latin"], variable: "--font-mono" })
 
 export const metadata: Metadata = {
   title: "AEDRIN",
-  description: "An operating system for your soul.",
+  description: "An operating system for your soul. Capture memories, preserve your story for the people you love.",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "AEDRIN",
+  },
+  formatDetection: {
+    telephone: false,
+  },
 }
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
