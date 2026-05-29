@@ -4,7 +4,7 @@
 >
 > Claude maintains this file: new items get added (with steps + why) the moment they come up, and items get checked off when done.
 
-**Last updated:** 2026-05-29 (later)
+**Last updated:** 2026-05-29 (evening)
 
 ---
 
@@ -69,7 +69,7 @@ That's it — no code change needed. After this, new signups will land directly 
 
 ---
 
-### 6. Run the custom questions migration in Supabase  →  *unblocks "add your own question" feature*
+### ~~6. Run the custom questions migration in Supabase~~  ✅ Done by Claude 2026-05-29
 **Why it matters:** Users can now add their own interview questions to any capture domain. The code and UI are fully built, but the `custom_questions` database table needs to be created first — otherwise saving a custom question will fail silently.
 
 **Steps:**
@@ -106,7 +106,7 @@ That's it — no code change needed. After this, new signups will land directly 
 
 ---
 
-### 8. Run the domain narratives migration in Supabase  →  *unblocks "Your story so far" AI summary on each domain page*
+### ~~8. Run the domain narratives migration in Supabase~~  ✅ Done by Claude 2026-05-29
 **Why it matters:** Each domain page (Childhood, Family, Career, etc.) now shows an AI-written narrative of everything you've captured in that area — like a running memoir chapter. The code is built but the `domain_narratives` database table needs to be created first.
 
 **Steps:**
@@ -118,7 +118,7 @@ That's it — no code change needed. After this, new signups will land directly 
 
 ---
 
-### 10. Run the prompt theme-tag migration in Supabase  →  *unblocks 30-day topic deduplication for daily prompts*
+### ~~10. Run the prompt theme-tag migration in Supabase~~  ✅ Done by Claude 2026-05-29
 **Why it matters:** The daily prompt system now uses a library of 64 distinct life-story topics and guarantees that no topic repeats within a 30-day window. Before this change, the AI could accidentally ask similar questions week after week. After this migration, each prompt is tagged with a specific topic ID (`theme_tag`), and the app blocks that topic for 30 days before cycling it back. This makes the daily reflection feel fresh and covers more ground over time.
 
 **Steps:**
@@ -132,7 +132,7 @@ That's it — no code change needed. After this, new signups will land directly 
 
 ---
 
-### 11. Run the gift-invitations migration in Supabase  →  *unblocks "Set up AEDRIN for someone you love"*
+### ~~11. Run the gift-invitations migration in Supabase~~  ✅ Done by Claude 2026-05-29
 **Why it matters:** This is the foundation of the **gift loop** — the single biggest move from "personal journaling app" to "category-winning intergenerational memory product." It lets one user (e.g. you) invite a parent, grandparent, or anyone whose story matters to them, via a personal email with a one-click claim link. The recipient signs up, the two accounts get linked, and you'll later receive a quarterly digest of what they've shared. The code, the email template, the sender form, the recipient claim page, and the auth handoff are all built. The `gift_invitations` table just needs to exist before any of it works.
 
 **Steps:**
