@@ -2,6 +2,8 @@
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
+import { sendEmail } from '@/lib/email'
+import { heirInvitationEmail, executorInvitationEmail } from '@/lib/email-templates'
 import type { Domain } from '@/lib/supabase/types'
 
 const ALL_DOMAINS: Domain[] = ['childhood','family','career','values','beliefs','lessons','messages','other']
@@ -34,6 +36,16 @@ export async function addHeir(formData: FormData) {
     allowed: false,
   }))
   await supabase.from('heir_permissions').insert(perms)
+
+  // Notify the heir they've been designated — best-effort, never blocks
+  const { data: profile } = await supabase
+    .from('users')
+    .select('display_name, legal_name')
+    .eq('id', user.id)
+    .single() as { data: { display_name: string | null; legal_name: string } | null }
+  const fromName = profile?.display_name ?? profile?.legal_name ?? 'Someone'
+  const inviteTmpl = heirInvitationEmail(fromName, relationship)
+  sendEmail({ to: email, subject: inviteTmpl.subject, html: inviteTmpl.html }).catch(() => undefined)
 
   revalidatePath('/app/settings')
   return { success: true, heirId: heir.id }
@@ -98,6 +110,17 @@ export async function addExecutor(formData: FormData) {
     .insert({ user_id: user.id, name, email })
 
   if (error) return { error: error.message }
+
+  // Notify the executor they've been designated — best-effort, never blocks
+  const { data: profile } = await supabase
+    .from('users')
+    .select('display_name, legal_name')
+    .eq('id', user.id)
+    .single() as { data: { display_name: string | null; legal_name: string } | null }
+  const fromName = profile?.display_name ?? profile?.legal_name ?? 'Someone'
+  const execTmpl = executorInvitationEmail(fromName)
+  sendEmail({ to: email, subject: execTmpl.subject, html: execTmpl.html }).catch(() => undefined)
+
   revalidatePath('/app/settings')
   return { success: true }
 }

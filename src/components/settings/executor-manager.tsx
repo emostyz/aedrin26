@@ -53,9 +53,28 @@ export function ExecutorManager({ initialExecutors }: Props) {
           {showForm ? 'Cancel' : '+ Add executor'}
         </button>
       </div>
-      <p className="text-xs text-muted-foreground/60 leading-relaxed">
-        This is typically a spouse, close friend, or solicitor — someone who will know to act. Let them know they&apos;re listed here and what it means.
-      </p>
+      {/* What an executor does */}
+      <div className="rounded-lg border border-border/60 bg-surface/40 px-5 py-4 space-y-3">
+        <p className="text-[11px] text-muted-foreground uppercase tracking-wider">What an executor does</p>
+        <ol className="space-y-2.5">
+          {[
+            { step: '1', text: 'After you pass, your executor visits AEDRIN and submits a memorialization request on your behalf.' },
+            { step: '2', text: 'AEDRIN verifies the request (a short grace period applies so you can cancel if this ever happens by mistake).' },
+            { step: '3', text: 'Once approved, heirs automatically receive an email granting access to the entries you designated for them.' },
+            { step: '4', text: 'The executor doesn\'t see your story — they only unlock it. Choose someone you trust to act at the right moment.' },
+          ].map(({ step, text }) => (
+            <li key={step} className="flex gap-3 text-xs text-muted-foreground leading-relaxed">
+              <span className="shrink-0 w-4 h-4 rounded-full border border-border/60 flex items-center justify-center text-[9px] text-muted-foreground/60 font-medium mt-px">
+                {step}
+              </span>
+              <span>{text}</span>
+            </li>
+          ))}
+        </ol>
+        <p className="text-[11px] text-muted-foreground/60 leading-relaxed pt-1">
+          Good choices: a spouse, close friend, solicitor, or anyone else who will know to act. Tell them they&apos;re listed here and what it means.
+        </p>
+      </div>
 
       <AnimatePresence>
         {showForm && (

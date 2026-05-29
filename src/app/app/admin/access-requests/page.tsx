@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
+import { useAdmin } from '../layout'
 import type { Domain } from '@/lib/supabase/types'
 
 const DOMAINS: Domain[] = ['childhood', 'family', 'career', 'values', 'beliefs', 'lessons', 'messages', 'other']
@@ -20,13 +21,14 @@ interface AccessRequest {
 }
 
 export default function AdminAccessRequestsPage() {
-  const [secret, setSecret] = useState('')
+  const { secret, authed } = useAdmin()
   const [requests, setRequests] = useState<AccessRequest[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [domainSel, setDomainSel] = useState<Record<string, Set<Domain>>>({})
 
-  async function load() {
+  const load = useCallback(async () => {
+    if (!secret) return
     setError(null); setBusy(true)
     try {
       const res = await fetch('/api/admin/access-requests', { headers: { 'x-admin-secret': secret } })
@@ -34,7 +36,9 @@ export default function AdminAccessRequestsPage() {
       if (!res.ok) { setError(json.error ?? 'Failed to load.'); return }
       setRequests(json.requests)
     } finally { setBusy(false) }
-  }
+  }, [secret])
+
+  useEffect(() => { if (authed) load() }, [authed, load])
 
   function toggleDomain(reqId: string, d: Domain) {
     setDomainSel((prev) => {
@@ -58,24 +62,20 @@ export default function AdminAccessRequestsPage() {
     } finally { setBusy(false) }
   }
 
-  return (
-    <div className="space-y-8 max-w-2xl">
-      <div className="space-y-2">
-        <p className="text-label">Admin · Access requests</p>
-        <p className="text-sm text-muted-foreground">Escalated representative access requests awaiting review.</p>
-      </div>
+  if (!authed) return <p className="text-sm text-muted-foreground">Enter your admin secret above.</p>
 
-      <div className="flex items-center gap-2">
-        <input
-          type="password" value={secret} onChange={(e) => setSecret(e.target.value)}
-          placeholder="Admin secret"
-          className="flex-1 bg-input border border-border rounded-md px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-        />
+  return (
+    <div className="space-y-8">
+      <div className="flex items-center justify-between">
+        <div className="space-y-0.5">
+          <p className="text-label">Access requests</p>
+          <p className="text-sm text-muted-foreground">Escalated representative access requests awaiting review.</p>
+        </div>
         <button
-          onClick={load} disabled={busy || !secret}
-          className="bg-primary text-primary-foreground rounded-md px-5 py-2.5 text-xs font-medium hover:opacity-90 disabled:opacity-40 transition-opacity"
+          onClick={load} disabled={busy}
+          className="text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40"
         >
-          {busy ? 'Loading…' : 'Load'}
+          {busy ? 'Loading…' : 'Refresh'}
         </button>
       </div>
 

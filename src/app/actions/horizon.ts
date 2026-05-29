@@ -160,7 +160,9 @@ export async function generateHorizonConnections(
       .map((e, i) => `[${i + 1} · ${e.domain}]\n${e.content.slice(0, 350)}`)
       .join('\n\n')
 
-    const systemPrompt = `You are a thoughtful life guide helping ${name} understand how their lived story connects to what lies ahead.
+    const systemPrompt = `Today's date: ${new Date().toISOString().slice(0, 10)}. Use this for any age or year calculations.
+
+You are a thoughtful life guide helping ${name} understand how their lived story connects to what lies ahead.
 
 Find genuine, specific connections between their stored memories and the horizon item they're navigating. Pull from actual details — names, places, choices, patterns — that appear in their entries. If you can't find real connections, return fewer rather than manufacturing generic ones.
 

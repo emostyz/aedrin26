@@ -18,6 +18,7 @@ const REL_OPTIONS: { value: RelStatus; label: string }[] = [
 interface StepData {
   relationship_status: RelStatus | ''
   location: string
+  dob: string                   // YYYY-MM-DD, optional
   company: string
   job_title: string
   job_happiness: string
@@ -43,6 +44,7 @@ export function OnboardingFlow({ legalName }: { legalName: string }) {
   const [data, setData] = useState<StepData>({
     relationship_status: '',
     location: '',
+    dob: '',
     company: '',
     job_title: '',
     job_happiness: '',
@@ -74,6 +76,7 @@ export function OnboardingFlow({ legalName }: { legalName: string }) {
     const fd = new FormData()
     if (data.relationship_status) fd.set('relationship_status', data.relationship_status)
     fd.set('location', data.location)
+    if (data.dob) fd.set('dob', data.dob)
     fd.set('company', data.company)
     fd.set('job_title', data.job_title)
     fd.set('job_happiness', data.job_happiness)
@@ -262,6 +265,20 @@ function StepLifeStage({
             onChange={(e) => onChange('location', e.target.value)}
             placeholder="City, country…"
             className="w-full bg-input border border-border rounded-md px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring transition-all"
+          />
+        </div>
+
+        {/* Date of birth — optional, helps personalise AI prompts */}
+        <div className="space-y-2">
+          <label className="text-xs text-muted-foreground uppercase tracking-wider">
+            Date of birth <span className="normal-case">(optional — helps personalise your questions)</span>
+          </label>
+          <input
+            type="date"
+            value={data.dob}
+            onChange={(e) => onChange('dob', e.target.value)}
+            max={new Date().toISOString().slice(0, 10)}
+            className="w-full bg-input border border-border rounded-md px-4 py-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring transition-all"
           />
         </div>
       </div>

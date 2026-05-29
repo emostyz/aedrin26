@@ -4,7 +4,12 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { sendEmail } from '@/lib/email'
-import { memorializationInitiatedEmail } from '@/lib/email-templates'
+import {
+  memorializationInitiatedEmail,
+  docsSubmittedEmail,
+  memorializationApprovedEmail,
+  memorializationRejectedEmail,
+} from '@/lib/email-templates'
 
 // ─── Executor: initiate a memorialization request ─────────────────────────────
 export async function initiateMemorialization(formData: FormData) {
@@ -108,6 +113,16 @@ export async function submitVerificationDocuments(requestId: string, files: { na
     .eq('id', requestId)
 
   if (updateError) return { error: updateError.message }
+
+  // Notify the executor that docs were received and grace period is running
+  const { data: deceasedUser } = await service
+    .from('users')
+    .select('legal_name, display_name')
+    .eq('id', request.user_id)
+    .single() as { data: { legal_name: string; display_name: string | null } | null }
+  const deceasedName = deceasedUser?.display_name ?? deceasedUser?.legal_name ?? 'the account holder'
+  const confirmTmpl = docsSubmittedEmail(deceasedName, gracePeriodEndsAt)
+  await sendEmail({ to: user.email!, subject: confirmTmpl.subject, html: confirmTmpl.html })
 
   revalidatePath('/app/executor')
   return { success: true }

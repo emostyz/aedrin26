@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
+import Link from 'next/link'
 import { motion, AnimatePresence } from '@/components/ui/motion'
 import { addHeir, removeHeir, updateHeirPermissions } from '@/app/actions/settings'
 import type { Domain } from '@/lib/supabase/types'
@@ -137,6 +138,40 @@ export function HeirManager({ initialHeirs }: Props) {
         )}
       </AnimatePresence>
 
+      {/* Access summary matrix — only shown when 2+ heirs so the table is useful */}
+      {heirs.length >= 2 && (
+        <div className="rounded-lg border border-border/60 bg-surface/20 px-5 py-4 space-y-3 overflow-x-auto">
+          <p className="text-[11px] text-muted-foreground uppercase tracking-wider">Access snapshot</p>
+          <table className="text-[11px] border-collapse w-full">
+            <thead>
+              <tr>
+                <th className="text-left text-muted-foreground font-normal pb-2 pr-4 whitespace-nowrap">Person</th>
+                {ALL_DOMAINS.map((d) => (
+                  <th key={d} className="text-muted-foreground font-normal pb-2 px-1 text-center whitespace-nowrap">
+                    {DOMAIN_LABELS[d].slice(0, 3)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {heirs.map((heir) => (
+                <tr key={heir.id} className="border-t border-border/30">
+                  <td className="py-2 pr-4 text-foreground whitespace-nowrap">{heir.name}</td>
+                  {ALL_DOMAINS.map((d) => (
+                    <td key={d} className="py-2 px-1 text-center">
+                      {heir.permissions[d]
+                        ? <span className="text-foreground">✓</span>
+                        : <span className="text-muted-foreground/30">—</span>
+                      }
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       {heirs.length === 0 ? (
         <div className="border border-border rounded-lg px-5 py-8 text-center">
           <p className="text-sm text-muted-foreground">No heirs designated yet.</p>
@@ -157,10 +192,18 @@ export function HeirManager({ initialHeirs }: Props) {
                     <p className="text-sm text-foreground">{heir.name}</p>
                     <p className="text-xs text-muted-foreground">{heir.relationship} · {heir.email}</p>
                   </div>
-                  <button onClick={() => handleRemove(heir.id)} disabled={isPending}
-                    className="text-xs text-muted-foreground hover:text-destructive transition-colors disabled:opacity-40">
-                    Remove
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <Link
+                      href={`/app/preview/heir/${heir.id}`}
+                      className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      Preview →
+                    </Link>
+                    <button onClick={() => handleRemove(heir.id)} disabled={isPending}
+                      className="text-xs text-muted-foreground hover:text-destructive transition-colors disabled:opacity-40">
+                      Remove
+                    </button>
+                  </div>
                 </div>
 
                 <div className="space-y-2">

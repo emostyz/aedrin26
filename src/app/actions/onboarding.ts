@@ -2,6 +2,8 @@
 
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { sendEmail } from '@/lib/email'
+import { welcomeEmail } from '@/lib/email-templates'
 
 const MAX_FIELD_LENGTH = 10_000 // 10 KB cap on any single intake field
 
@@ -17,6 +19,7 @@ export async function completeOnboarding(formData: FormData): Promise<{ error?: 
 
   const relationship_status = (formData.get('relationship_status') as string) || null
   const location            = clamp((formData.get('location') as string)?.trim() || null)
+  const dob                 = (formData.get('dob') as string)?.trim() || null
   const company             = clamp((formData.get('company') as string)?.trim() || null)
   const job_title           = clamp((formData.get('job_title') as string)?.trim() || null)
   const job_happiness       = clamp((formData.get('job_happiness') as string)?.trim() || null)
@@ -31,6 +34,7 @@ export async function completeOnboarding(formData: FormData): Promise<{ error?: 
     .update({
       relationship_status,
       location,
+      ...(dob ? { dob } : {}),
       company, job_title, job_happiness, career_goals, family_description,
       life_description,
       biggest_regret,
@@ -75,6 +79,11 @@ export async function completeOnboarding(formData: FormData): Promise<{ error?: 
       )
     } catch { /* intentionally swallowed */ }
   }
+
+  // Send welcome email — best-effort, never blocks redirect
+  const firstName = (user.user_metadata?.legal_name as string | undefined)?.split(' ')[0] ?? ''
+  const tmpl = welcomeEmail(firstName)
+  sendEmail({ to: user.email!, subject: tmpl.subject, html: tmpl.html }).catch(() => undefined)
 
   redirect('/app/dashboard')
 }

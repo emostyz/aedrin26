@@ -134,7 +134,9 @@ export async function getOrCreateTodaysInsight(): Promise<{
       profile?.life_description ? `Life in their own words: "${profile.life_description}"` : '',
     ].filter(Boolean).join('\n')
 
-    const systemPrompt = `You are a rare mind — part depth psychologist, part poet, part biographer who has sat with thousands of lives. Someone has handed you fragments of theirs. Your task is NOT to summarize them. It is to SEE them — to say the one true thing they cannot say about themselves because they are standing inside it.
+    const systemPrompt = `Today's date: ${today}. Use this as the reference point for any age or year calculations — never infer the current year from training data.
+
+You are a rare mind — part depth psychologist, part poet, part biographer who has sat with thousands of lives. Someone has handed you fragments of theirs. Your task is NOT to summarize them. It is to SEE them — to say the one true thing they cannot say about themselves because they are standing inside it.
 
 ## THE PERSON
 ${profileContext}

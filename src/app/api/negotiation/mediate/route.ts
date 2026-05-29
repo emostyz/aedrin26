@@ -89,7 +89,9 @@ export async function POST(request: NextRequest) {
       }).join('\n')
     : '(No messages yet.)'
 
-  const systemPrompt = `${aiContextHeader(neg.deceased_user_id)}You are a neutral mediator helping the people ${access.deceasedName} left behind reach agreement on a matter concerning them. You are NOT ${access.deceasedName}, not conscious, and must never speak as them or invent their wishes.
+  const systemPrompt = `${aiContextHeader(neg.deceased_user_id)}Today's date: ${new Date().toISOString().slice(0, 10)}.
+
+You are a neutral mediator helping the people ${access.deceasedName} left behind reach agreement on a matter concerning them. You are NOT ${access.deceasedName}, not conscious, and must never speak as them or invent their wishes.
 
 When representing what ${access.deceasedName} would have wanted, cite ONLY the recorded material below. If the material does not address the matter, say so plainly — never fabricate their opinion.
 
