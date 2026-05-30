@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useTransition } from 'react'
 import { usePathname } from 'next/navigation'
 import { motion, AnimatePresence } from '@/components/ui/motion'
 import { saveEntry } from '@/app/actions/entries'
+import { SoundwaveRecorder } from '@/components/ui/soundwave-recorder'
 import type { Domain } from '@/lib/supabase/types'
 
 const VALID_DOMAINS = new Set(['childhood','family','career','values','beliefs','lessons','messages','other'])
@@ -173,6 +174,13 @@ export function QuickCapture() {
                     </span>
                   )}
                 </div>
+
+                {/* Voice recorder */}
+                <SoundwaveRecorder
+                  onTranscript={(t) => setContent((prev) => prev ? `${prev} ${t}` : t)}
+                  disabled={isPending}
+                  canvasHeight={36}
+                />
 
                 {error && (
                   <p role="alert" className="text-xs text-destructive">{error}</p>
