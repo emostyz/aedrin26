@@ -4,11 +4,24 @@
 >
 > Claude maintains this file: new items get added (with steps + why) the moment they come up, and items get checked off when done.
 
-**Last updated:** 2026-05-30
+**Last updated:** 2026-05-30 (updated)
 
 ---
 
 ## 🔴 Open — do these to unlock features that are already built & deployed
+
+### 0. Set `ADMIN_SECRET` in Vercel  →  *unlocks the admin panel (users, memorialization, access requests)*
+**Why it matters:** The admin panel at `/app/admin` is how you manage everything that needs human oversight: approving or rejecting memorialization requests, reviewing representative access requests, and seeing user activity. Without `ADMIN_SECRET`, the admin UI shows "Unlock" but every API call returns 403 — you can't do anything.
+
+**Steps:**
+1. Pick any long, random string as your admin password — something like a 32-character random string (you can generate one at [randomkeygen.com](https://randomkeygen.com)).
+2. Go to **Vercel → aedrin26 project → Settings → Environment Variables (Production)**.
+3. Add: `ADMIN_SECRET` = `<your random string>` → Save → **Redeploy**.
+4. When visiting `/app/admin`, paste that same string into the "Admin secret" field and click Unlock.
+
+**Done when:** The admin overview page loads with user stats and the "authenticated" badge appears.
+
+---
 
 ### 1. Verify `aedrin.com` in Resend  →  *unblocks email reaching real users, and sending from @aedrin.com*
 **Why it matters:** Right now Resend is in **test mode**, which only delivers email to your own address (`ermostrom@gmail.com`). That means your real users — like `jordan@notyourdadsmedia.com` — currently receive **nothing**: no daily reflection reminders, no heir-access notices, none of it. Verifying the domain is the single switch that turns the whole notification layer on for everyone. It's the highest-impact item on this list.
