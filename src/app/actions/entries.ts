@@ -85,6 +85,7 @@ export async function updateEntry(entryId: string, content: string) {
 
   revalidatePath('/app/review')
   revalidatePath('/app/dashboard')
+  revalidatePath('/app/today')
   revalidatePath('/app/interview/[domain]', 'page')
 
   return { success: true }
@@ -122,6 +123,7 @@ export async function deleteEntry(entryId: string) {
 
   revalidatePath('/app/review')
   revalidatePath('/app/dashboard')
+  revalidatePath('/app/today')
   revalidatePath('/app/lifemap')
   revalidatePath('/app/search')
   revalidatePath('/app/profile')
