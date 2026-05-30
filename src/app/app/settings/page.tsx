@@ -88,6 +88,7 @@ export default async function SettingsPage() {
       <FadeUp delay={0.04}>
         <div className="flex flex-wrap gap-x-5 gap-y-2">
           {[
+            { href: '/app/today',    label: "Today's journal →" },
             { href: '/app/archive',  label: 'Archive →' },
             { href: '/app/letters',  label: 'Letters →' },
             { href: '/app/represent', label: 'Represent →' },

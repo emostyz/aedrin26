@@ -550,6 +550,7 @@ export default async function DashboardPage({
       {/* ── Quick links ──────────────────────────────────────────────── */}
       <FadeUp delay={0.25}>
         <div className="flex flex-wrap gap-x-6 gap-y-2 text-xs text-muted-foreground border-t border-border pt-8">
+          <Link href="/app/today"          className="hover:text-foreground transition-colors">Today&apos;s journal</Link>
           <Link href="/app/memoir"         className="hover:text-foreground transition-colors">Your memoir</Link>
           <Link href="/app/memoir/people"  className="hover:text-foreground transition-colors">People in your story</Link>
           <Link href="/app/review"         className="hover:text-foreground transition-colors">Review entries</Link>
