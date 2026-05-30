@@ -76,7 +76,11 @@ export default async function InterviewIndexPage() {
           Choose a domain.
         </p>
         <p className="text-sm text-muted-foreground">
-          Take your time. There are no right answers.
+          For past memories — your history, the people who shaped you, the things you&apos;ve learned.
+          Writing about today?{' '}
+          <Link href="/app/today" className="text-foreground underline underline-offset-4 hover:opacity-80 transition-opacity">
+            Use Today&apos;s journal →
+          </Link>
         </p>
 
         {/* Completion summary */}

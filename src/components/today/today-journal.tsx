@@ -4,6 +4,7 @@ import { useState, useTransition, useRef } from 'react'
 import { motion, AnimatePresence } from '@/components/ui/motion'
 import { saveEntry } from '@/app/actions/entries'
 import { SoundwaveRecorder } from '@/components/ui/soundwave-recorder'
+import type { Domain } from '@/lib/supabase/types'
 
 interface JournalEntry {
   id: string
@@ -17,6 +18,18 @@ interface Props {
   recentEntries: JournalEntry[]       // last ~7 days, excludes today
   todayPromptText: string | null
 }
+
+// Optional domain tagging (collapsed by default)
+const QUICK_DOMAINS: { value: Domain; label: string; dot: string }[] = [
+  { value: 'other',     label: 'Journal',   dot: 'bg-muted-foreground' },
+  { value: 'childhood', label: 'Childhood', dot: 'bg-amber-400' },
+  { value: 'family',    label: 'Family',    dot: 'bg-rose-400' },
+  { value: 'career',    label: 'Career',    dot: 'bg-blue-400' },
+  { value: 'values',    label: 'Values',    dot: 'bg-emerald-400' },
+  { value: 'beliefs',   label: 'Beliefs',   dot: 'bg-violet-400' },
+  { value: 'lessons',   label: 'Lessons',   dot: 'bg-orange-400' },
+  { value: 'messages',  label: 'Messages',  dot: 'bg-teal-400' },
+]
 
 const DOMAIN_LABEL: Record<string, string> = {
   childhood: 'Childhood',
@@ -71,6 +84,8 @@ function groupByDay(entries: JournalEntry[]): Array<{ label: string; entries: Jo
 
 export function TodayJournal({ todayEntries, recentEntries, todayPromptText }: Props) {
   const [content, setContent]         = useState('')
+  const [domain, setDomain]           = useState<Domain>('other')
+  const [showDomains, setShowDomains] = useState(false)
   const [showExtra, setShowExtra]     = useState(false)
   const [savedCount, setSavedCount]   = useState(0)
   const [error, setError]             = useState<string | null>(null)
@@ -82,6 +97,7 @@ export function TodayJournal({ todayEntries, recentEntries, todayPromptText }: P
   const [liveToday, setLiveToday] = useState<JournalEntry[]>(todayEntries)
 
   const wordCount = content.trim().split(/\s+/).filter(Boolean).length
+  const activeDomainMeta = QUICK_DOMAINS.find((d) => d.value === domain) ?? QUICK_DOMAINS[0]
 
   function handleSave() {
     const text = content.trim()
@@ -89,7 +105,7 @@ export function TodayJournal({ todayEntries, recentEntries, todayPromptText }: P
     setError(null)
     startTransition(async () => {
       const fd = new FormData()
-      fd.set('domain', 'other')
+      fd.set('domain', domain)
       fd.set('content', text)
       const result = await saveEntry(fd)
       if (result?.error) { setError(result.error); return }
@@ -97,7 +113,7 @@ export function TodayJournal({ todayEntries, recentEntries, todayPromptText }: P
       const newEntry: JournalEntry = {
         id: crypto.randomUUID(),
         content: text,
-        domain: 'other',
+        domain,
         created_at: new Date().toISOString(),
       }
       setLiveToday((prev) => [newEntry, ...prev])
@@ -158,6 +174,46 @@ export function TodayJournal({ todayEntries, recentEntries, todayPromptText }: P
           </div>
 
           {error && <p className="text-xs text-destructive">{error}</p>}
+
+          {/* Optional domain tag */}
+          <div className="space-y-2">
+            <button
+              type="button"
+              onClick={() => setShowDomains((v) => !v)}
+              className="flex items-center gap-1.5 text-[10px] text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+            >
+              <span className={`w-1.5 h-1.5 rounded-full ${activeDomainMeta.dot}`} />
+              {activeDomainMeta.label}
+              <span className="opacity-50">{showDomains ? '▲' : '▼'}</span>
+            </button>
+            <AnimatePresence>
+              {showDomains && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="flex flex-wrap gap-1.5 overflow-hidden"
+                >
+                  {QUICK_DOMAINS.map((d) => (
+                    <button
+                      key={d.value}
+                      type="button"
+                      onClick={() => { setDomain(d.value); setShowDomains(false) }}
+                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] border transition-all ${
+                        domain === d.value
+                          ? 'border-foreground/30 bg-foreground/5 text-foreground'
+                          : 'border-border text-muted-foreground hover:border-foreground/20'
+                      }`}
+                    >
+                      <span className={`w-1 h-1 rounded-full ${d.dot}`} />
+                      {d.label}
+                    </button>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
 
           <div className="flex items-center gap-4">
             <button

@@ -9,7 +9,7 @@ import { milestoneEmail } from '@/lib/email-templates'
 // Milestone state is persisted as a JSONB column `milestones_sent` on users —
 // if the column doesn't exist yet, the cron silently skips (safe).
 
-type MilestoneKey = '1st_entry' | '10_entries' | '50_entries' | '7_domains'
+type MilestoneKey = '1st_entry' | '10_entries' | '50_entries' | '7_domains' | '30_day_streak'
 const ENTRY_MILESTONES: { key: MilestoneKey; threshold: number }[] = [
   { key: '1st_entry',   threshold: 1  },
   { key: '10_entries',  threshold: 10 },
@@ -45,16 +45,26 @@ export async function GET(request: NextRequest) {
 
   const ids = users.map((u) => u.id)
 
-  const [entriesRes, domainsRes] = await Promise.all([
+  // For streak detection we need dates in the last 31 days
+  const thirtyOneDaysAgo = new Date(Date.now() - 31 * 86_400_000).toISOString()
+
+  const [entriesRes, domainsRes, recentDatesRes] = await Promise.all([
     service.from('soul_entries').select('user_id').in('user_id', ids),
     service.from('soul_entries').select('user_id, domain').in('user_id', ids),
+    service
+      .from('soul_entries')
+      .select('user_id, created_at')
+      .in('user_id', ids)
+      .gte('created_at', thirtyOneDaysAgo),
   ])
 
   type EntryRow = { user_id: string }
   type DomainRow = { user_id: string; domain: string }
+  type DateRow = { user_id: string; created_at: string }
 
   const allEntries = (entriesRes.data ?? []) as EntryRow[]
   const allDomains = (domainsRes.data ?? []) as DomainRow[]
+  const recentDates = (recentDatesRes.data ?? []) as DateRow[]
 
   const entryCountByUser = new Map<string, number>()
   for (const e of allEntries) {
@@ -68,6 +78,29 @@ export async function GET(request: NextRequest) {
     domainSetByUser.set(e.user_id, s)
   }
 
+  // Build date sets per user for streak computation
+  const datesByUser = new Map<string, Set<string>>()
+  for (const row of recentDates) {
+    const daySet = datesByUser.get(row.user_id) ?? new Set<string>()
+    daySet.add(row.created_at.slice(0, 10))
+    datesByUser.set(row.user_id, daySet)
+  }
+
+  function computeStreak(daySet: Set<string>): number {
+    let streak = 0
+    const today = new Date()
+    for (let i = 0; i <= 31; i++) {
+      const d = new Date(today)
+      d.setDate(d.getDate() - i)
+      if (daySet.has(d.toISOString().slice(0, 10))) {
+        streak++
+      } else {
+        break
+      }
+    }
+    return streak
+  }
+
   const emails: { to: string; subject: string; html: string }[] = []
   const updates: { id: string; milestones_sent: Record<string, boolean> }[] = []
 
@@ -76,6 +109,7 @@ export async function GET(request: NextRequest) {
     const firstName = (u.display_name ?? u.legal_name ?? '').split(' ')[0] ?? ''
     const count = entryCountByUser.get(u.id) ?? 0
     const domains = domainSetByUser.get(u.id) ?? new Set<string>()
+    const streak = computeStreak(datesByUser.get(u.id) ?? new Set<string>())
     let newMilestone = false
 
     for (const { key, threshold } of ENTRY_MILESTONES) {
@@ -91,6 +125,13 @@ export async function GET(request: NextRequest) {
       const tmpl = milestoneEmail(firstName, '7_domains')
       emails.push({ to: u.email, subject: tmpl.subject, html: tmpl.html })
       sent['7_domains'] = true
+      newMilestone = true
+    }
+
+    if (!sent['30_day_streak'] && streak >= 30) {
+      const tmpl = milestoneEmail(firstName, '30_day_streak')
+      emails.push({ to: u.email, subject: tmpl.subject, html: tmpl.html })
+      sent['30_day_streak'] = true
       newMilestone = true
     }
 
