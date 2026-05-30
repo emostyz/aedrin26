@@ -40,6 +40,7 @@ export async function saveEntry(formData: FormData) {
 
   revalidatePath(`/app/interview/${domain}`)
   revalidatePath('/app/dashboard')
+  revalidatePath('/app/today')
   revalidatePath('/app/review')
   revalidatePath('/app/search')
   revalidatePath('/app/profile')
