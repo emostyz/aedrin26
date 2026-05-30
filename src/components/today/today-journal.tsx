@@ -16,6 +16,7 @@ interface JournalEntry {
 interface Props {
   todayEntries: JournalEntry[]
   recentEntries: JournalEntry[]       // last ~7 days, excludes today
+  onThisDayEntries: JournalEntry[]    // same calendar date in previous years
   todayPromptText: string | null
 }
 
@@ -82,7 +83,7 @@ function groupByDay(entries: JournalEntry[]): Array<{ label: string; entries: Jo
     .map(([key, list]) => ({ label: dayLabel(`${key}T12:00:00Z`), entries: list }))
 }
 
-export function TodayJournal({ todayEntries, recentEntries, todayPromptText }: Props) {
+export function TodayJournal({ todayEntries, recentEntries, onThisDayEntries, todayPromptText }: Props) {
   const [content, setContent]         = useState('')
   const [domain, setDomain]           = useState<Domain>('other')
   const [showDomains, setShowDomains] = useState(false)
@@ -293,6 +294,26 @@ export function TodayJournal({ todayEntries, recentEntries, todayPromptText }: P
           <p className="text-sm text-muted-foreground">Your journal is empty — the first entry starts here.</p>
         </div>
       )}
+
+      {/* On This Day — memories from this date in past years */}
+      {onThisDayEntries.length > 0 && (
+        <div className="space-y-3 pt-4 border-t border-border">
+          <div className="flex items-center gap-3">
+            <p className="text-label shrink-0">On this day</p>
+            <div className="flex-1 h-px bg-border" />
+            <span className="text-[10px] text-muted-foreground/40 shrink-0">from past years</span>
+          </div>
+          <div className="space-y-2">
+            {onThisDayEntries.map((e) => {
+              const yearsAgo = new Date().getUTCFullYear() - new Date(e.created_at).getUTCFullYear()
+              const yearLabel = yearsAgo === 1 ? '1 year ago' : `${yearsAgo} years ago`
+              return (
+                <OnThisDayBlock key={e.id} entry={e} yearLabel={yearLabel} />
+              )
+            })}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -324,6 +345,35 @@ function EntryBlock({ entry }: { entry: JournalEntry }) {
         </span>
         <span className="text-muted-foreground/20 text-[9px]">·</span>
         <span className="text-[9px] text-muted-foreground/30">{ago(entry.created_at)}</span>
+      </div>
+    </div>
+  )
+}
+
+function OnThisDayBlock({ entry, yearLabel }: { entry: JournalEntry; yearLabel: string }) {
+  const [expanded, setExpanded] = useState(false)
+  const LIMIT = 250
+  const isLong = entry.content.length > LIMIT
+  const display = (!expanded && isLong) ? entry.content.slice(0, LIMIT).trimEnd() + '…' : entry.content
+
+  return (
+    <div className="border border-border/40 border-l-4 border-l-foreground/10 rounded-xl px-5 py-4 space-y-2 bg-surface/10">
+      <p className="text-sm text-foreground/70 font-light leading-relaxed whitespace-pre-wrap italic">{display}</p>
+      {isLong && (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="text-[10px] text-muted-foreground/40 hover:text-muted-foreground transition-colors"
+        >
+          {expanded ? 'Show less' : 'Show more'}
+        </button>
+      )}
+      <div className="flex items-center gap-3 pt-0.5">
+        <span className="text-[9px] text-muted-foreground/50">{yearLabel}</span>
+        <span className="text-muted-foreground/20 text-[9px]">·</span>
+        <span className="text-[9px] uppercase tracking-widest text-muted-foreground/40">
+          {DOMAIN_LABEL[entry.domain] ?? entry.domain}
+        </span>
       </div>
     </div>
   )

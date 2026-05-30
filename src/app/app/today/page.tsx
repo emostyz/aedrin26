@@ -8,12 +8,21 @@ export default async function TodayPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
 
-  const today = new Date().toISOString().slice(0, 10)
+  const now = new Date()
+  const today = now.toISOString().slice(0, 10)
   const todayStart = `${today}T00:00:00.000Z`
   const sevenDaysAgo = new Date(Date.now() - 7 * 86_400_000).toISOString()
 
-  // Fetch today's entries, past 7 days, and today's prompt in parallel
-  const [todayRes, recentRes, todayPromptResult] = await Promise.all([
+  // "On this day" filter — same month+day in up to 7 previous years
+  const mm = String(now.getUTCMonth() + 1).padStart(2, '0')
+  const dd = String(now.getUTCDate()).padStart(2, '0')
+  const onThisDayFilter = Array.from({ length: 7 }, (_, i) => {
+    const yr = now.getUTCFullYear() - (i + 1)
+    return `and(created_at.gte.${yr}-${mm}-${dd}T00:00:00.000Z,created_at.lte.${yr}-${mm}-${dd}T23:59:59.999Z)`
+  }).join(',')
+
+  // Fetch today's entries, past 7 days, today's prompt, and on-this-day in parallel
+  const [todayRes, recentRes, todayPromptResult, onThisDayRes] = await Promise.all([
     // Everything written today (any domain)
     supabase
       .from('soul_entries')
@@ -35,12 +44,22 @@ export default async function TodayPage() {
       .limit(50),
 
     getOrCreateTodaysPrompt(),
+
+    // On this day — same calendar date in previous years
+    supabase
+      .from('soul_entries')
+      .select('id, content, domain, created_at')
+      .eq('user_id', user.id)
+      .is('bound_recipient_id', null)
+      .or(onThisDayFilter)
+      .order('created_at', { ascending: false }),
   ])
 
-  const todayEntries = (todayRes.data ?? []) as Array<{ id: string; content: string; domain: string; created_at: string }>
+  const todayEntries  = (todayRes.data ?? []) as Array<{ id: string; content: string; domain: string; created_at: string }>
   const recentEntries = (recentRes.data ?? []) as Array<{ id: string; content: string; domain: string; created_at: string }>
+  const onThisDayEntries = (onThisDayRes.data ?? []) as Array<{ id: string; content: string; domain: string; created_at: string }>
 
-  const dateLabel = new Date().toLocaleDateString('en-US', {
+  const dateLabel = now.toLocaleDateString('en-US', {
     weekday: 'long',
     month: 'long',
     day: 'numeric',
@@ -67,6 +86,7 @@ export default async function TodayPage() {
         <TodayJournal
           todayEntries={todayEntries}
           recentEntries={recentEntries}
+          onThisDayEntries={onThisDayEntries}
           todayPromptText={todayPromptResult.prompt?.prompt_text ?? null}
         />
       </FadeUp>

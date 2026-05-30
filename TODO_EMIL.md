@@ -4,7 +4,7 @@
 >
 > Claude maintains this file: new items get added (with steps + why) the moment they come up, and items get checked off when done.
 
-**Last updated:** 2026-05-29 (evening)
+**Last updated:** 2026-05-30
 
 ---
 
@@ -173,3 +173,4 @@ That's it — no code change needed. After this, new signups will land directly 
 
 ## ✅ Done
 - **2026-05-25** — Provided the Resend API key; email sending wired up (currently test-mode only).
+- **2026-05-30** — Migration 020 (`milestones_sent` column) applied to production by Claude. Milestone emails (1st entry, 10 entries, 50 entries, 7 domains, 30-day streak) are now live.
