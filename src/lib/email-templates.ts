@@ -46,30 +46,79 @@ function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
-// ── Daily reflection reminder — prompt + one-click deep link (+ reply-to-save) ─
+// ── Daily reflection reminder — prompt + streak + past-entry context ─────────
 export function dailyReminderEmail(
   firstName: string,
   promptText: string | null,
   canReply = false,
+  streak = 0,
+  pastEntry?: { content: string; domain: string; daysAgo: number } | null,
 ): { subject: string; html: string } {
   const name = firstName ? esc(firstName) : 'there'
+
+  // Streak badge — only shown when ≥ 2 days
+  const streakBlock = streak >= 2
+    ? `<p style="margin:0 0 16px;font-size:13px;color:${C.soft};">
+         🔥 <strong style="color:${C.fg};">${streak}-day streak</strong> — you've written ${streak} days in a row. Keep it going.
+       </p>`
+    : ''
+
+  // Today's prompt blockquote
   const promptBlock = promptText
     ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:8px 0 22px;"><tr>
          <td style="border-left:2px solid ${C.accent};padding:4px 0 4px 18px;">
            <p style="margin:0;font-size:18px;line-height:1.5;font-weight:300;font-style:italic;color:${C.fg};">&ldquo;${esc(promptText)}&rdquo;</p>
          </td></tr></table>`
     : ''
+
+  // Past entry snippet — shown only when available, as a "from your journal" block
+  const DOMAIN_LABELS: Record<string, string> = {
+    childhood: 'Childhood', family: 'Family', career: 'Career',
+    values: 'Values', beliefs: 'Beliefs', lessons: 'Lessons',
+    messages: 'Messages', other: 'Memories',
+  }
+  const pastBlock = pastEntry
+    ? (() => {
+        const daysLabel = pastEntry.daysAgo === 1 ? 'yesterday'
+          : pastEntry.daysAgo < 14 ? `${pastEntry.daysAgo} days ago`
+          : pastEntry.daysAgo < 60 ? `${Math.round(pastEntry.daysAgo / 7)} weeks ago`
+          : `${Math.round(pastEntry.daysAgo / 30)} months ago`
+        const domainLabel = DOMAIN_LABELS[pastEntry.domain] ?? 'Your journal'
+        // Trim to ~220 chars on a sentence boundary
+        let preview = pastEntry.content.replace(/\s+/g, ' ').trim()
+        if (preview.length > 220) {
+          const head = preview.slice(0, 220)
+          const cut = Math.max(head.lastIndexOf('. '), head.lastIndexOf('! '), head.lastIndexOf('? '))
+          preview = cut > 130 ? head.slice(0, cut + 1) : head.trimEnd() + '…'
+        }
+        return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:28px 0 4px;border-top:1px solid ${C.border};padding-top:24px;"><tr>
+          <td>
+            <p style="margin:0 0 10px;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:${C.faint};">From your journal &middot; ${esc(domainLabel)} &middot; ${esc(daysLabel)}</p>
+            <p style="margin:0;font-size:14px;line-height:1.75;color:${C.soft};font-style:italic;">&ldquo;${esc(preview)}&rdquo;</p>
+          </td></tr></table>`
+      })()
+    : ''
+
   const replyHint = canReply
     ? p(`<span style="font-size:12px;color:${C.faint};">Or simply <strong style="color:${C.soft};">reply to this email</strong> with your reflection — we'll save it to your journal automatically.</span>`)
     : p(`<span style="font-size:12px;color:${C.faint};">Tap above and write straight away — it saves to your private journal in one click.</span>`)
+
+  // Subject varies by streak milestone
+  const subject = streak >= 30 ? `${streak} days of writing — today's reflection`
+    : streak >= 7 ? `${streak}-day streak — today's reflection is ready`
+    : promptText ? "Today's reflection is ready"
+    : 'A moment for yourself today'
+
   return {
-    subject: promptText ? 'Today’s reflection is ready' : 'A moment for yourself today',
+    subject,
     html: shell(
       h1(`A moment for yourself, ${name}.`) +
       p('Two quiet minutes today becomes part of the story the people you love will one day read.') +
+      streakBlock +
       promptBlock +
-      button(`${BASE_URL}/app/dashboard?reflect=1`, 'Write today’s reflection') +
-      replyHint,
+      button(`${BASE_URL}/app/dashboard?reflect=1`, "Write today's reflection") +
+      replyHint +
+      pastBlock,
     ),
   }
 }
@@ -99,9 +148,9 @@ export function heirAccessLiveEmail(
   heirEmail: string,
 ): { subject: string; html: string } {
   return {
-    subject: `You now have access to ${esc(deceasedName)}’s legacy`,
+    subject: `You now have access to ${esc(deceasedName)}'s legacy`,
     html: shell(
-      h1(`${esc(deceasedName)}’s legacy is now yours to sit with.`) +
+      h1(`${esc(deceasedName)}'s legacy is now yours to sit with.`) +
       p(`You can now revisit the memories and reflections ${esc(deceasedName)} chose to leave behind — and ask the questions you always wanted to ask. There is no rush. Take all the time you need.`) +
       p(`What you'll find: a private chat where you can ask anything about their life as they remembered it, and any final letters they wrote to you. The AI answers using only what ${esc(deceasedName)} actually recorded — nothing invented.`) +
       button(`${BASE_URL}/app/legacy/${esc(deceasedUserId)}`, 'Open their legacy') +
@@ -135,7 +184,7 @@ export function graceExpiringEmail(
 ): { subject: string; html: string } {
   const dateStr = graceEndDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })
   return {
-    subject: "Your account’s grace period ends soon",
+    subject: "Your account's grace period ends soon",
     html: shell(
       h1('You have 5 days to act.') +
       p(`A memorialization request for your account was filed by a designated executor. The 30-day grace period ends on <strong style="color:${C.fg};">${esc(dateStr)}</strong>.`) +
@@ -379,7 +428,7 @@ export function accessDecisionEmail(approved: boolean, escalated: boolean): { su
       subject: 'Your access request is under review',
       html: shell(
         h1('Your request is being reviewed.') +
-        p('Thank you for your patience. A person will review your request and the documents you provided, and you’ll hear from us once a decision is made.'),
+        p("Thank you for your patience. A person will review your request and the documents you provided, and you'll hear from us once a decision is made."),
       ),
     }
   }

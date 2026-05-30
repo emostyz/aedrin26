@@ -152,6 +152,12 @@ export default async function MemoirPage() {
             >
               People in your story →
             </Link>
+            <Link
+              href="/app/memoir/print"
+              className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-4 transition-colors"
+            >
+              Save as PDF →
+            </Link>
           </div>
           <Link
             href="/app/export"

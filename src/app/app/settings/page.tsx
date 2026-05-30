@@ -84,6 +84,24 @@ export default async function SettingsPage() {
         </p>
       </FadeUp>
 
+      {/* Quick navigation to pages removed from the top nav */}
+      <FadeUp delay={0.04}>
+        <div className="flex flex-wrap gap-x-5 gap-y-2">
+          {[
+            { href: '/app/archive',  label: 'Archive →' },
+            { href: '/app/letters',  label: 'Letters →' },
+            { href: '/app/represent', label: 'Represent →' },
+            { href: '/app/lifemap',  label: 'Life map →' },
+          ].map(({ href, label }) => (
+            <Link key={href} href={href} className="text-xs text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap">
+              {label}
+            </Link>
+          ))}
+        </div>
+      </FadeUp>
+
+      <div className="border-t border-border" />
+
       {/* Your data stats */}
       <FadeUp delay={0.05}>
         <div className="space-y-4">

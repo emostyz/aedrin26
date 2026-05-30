@@ -4,16 +4,15 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { motion, AnimatePresence } from '@/components/ui/motion'
 
+// Six focused items — keeps the header from ever overflowing.
+// Archive, Letters, and Represent are all reachable from Settings + their parent sections.
 const DESKTOP_NAV_ITEMS = [
   { href: '/app/dashboard', label: 'Home' },
   { href: '/app/interview', label: 'Capture' },
-  { href: '/app/memoir', label: 'Memoir' },
-  { href: '/app/review', label: 'Review' },
-  { href: '/app/archive', label: 'Archive' },
-  { href: '/app/lifemap', label: 'Life map' },
-  { href: '/app/letters', label: 'Letters' },
-  { href: '/app/represent', label: 'Represent' },
-  { href: '/app/settings', label: 'Settings' },
+  { href: '/app/review',    label: 'Review' },
+  { href: '/app/memoir',    label: 'Memoir' },
+  { href: '/app/lifemap',   label: 'Life map' },
+  { href: '/app/settings',  label: 'Settings' },
 ]
 
 const SearchIcon = () => (
@@ -89,20 +88,21 @@ export function NavClient({ displayName, children }: Props) {
   return (
     <>
       <header className="border-b border-border">
-        <div className="mx-auto max-w-3xl px-6 h-14 md:h-16 flex items-center justify-between gap-6">
+        {/* max-w-6xl gives the header room to breathe without constraining page content */}
+        <div className="mx-auto max-w-6xl px-6 h-14 md:h-16 flex items-center justify-between gap-4">
           <Link href="/app/dashboard" className="text-sm font-medium tracking-[0.08em] text-foreground shrink-0">
             AEDRIN
           </Link>
 
-          {/* Desktop nav */}
-          <nav className="hidden md:flex items-center gap-6">
+          {/* Desktop nav — whitespace-nowrap prevents any item from ever wrapping */}
+          <nav className="hidden md:flex items-center gap-5">
             {DESKTOP_NAV_ITEMS.map((item) => {
               const active = pathname.startsWith(item.href)
               return (
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`relative text-xs transition-colors ${active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                  className={`relative text-xs whitespace-nowrap transition-colors ${active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
                 >
                   {item.label}
                   {active && (
@@ -117,19 +117,18 @@ export function NavClient({ displayName, children }: Props) {
             })}
           </nav>
 
-          <div className="flex items-center gap-3 md:gap-4">
-            {/* Search — icon-only on mobile, icon+hint on desktop */}
+          <div className="flex items-center gap-3 shrink-0">
+            {/* Search icon only — ⌘K shortcut is wired globally */}
             <Link
               href="/app/search"
-              className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
+              className="flex items-center text-muted-foreground hover:text-foreground transition-colors"
               title="Search (⌘K)"
               aria-label="Search"
             >
               <SearchIcon />
-              <span className="hidden md:inline text-[10px] text-muted-foreground/50 font-mono">⌘K</span>
             </Link>
 
-            <Link href="/app/profile" className="hidden md:block text-xs text-muted-foreground hover:text-foreground transition-colors truncate max-w-[120px]">
+            <Link href="/app/profile" className="hidden md:block text-xs text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap max-w-[140px] overflow-hidden text-ellipsis">
               {displayName}
             </Link>
             {children}
