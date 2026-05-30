@@ -3,7 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { signShareToken } from '@/lib/share-token'
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://aedrin.com'
+const APP_URL = process.env.BASE_URL || 'https://www.aedrin.com'
 
 export async function createShareLink(entryId: string): Promise<{
   url: string | null

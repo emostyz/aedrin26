@@ -39,7 +39,12 @@ export async function GET(request: NextRequest) {
   const weekAgoStr = weekAgo.toISOString()
   const thisWeekStart = weekAgo.toISOString().slice(0, 10)
 
-  const [entriesRes, allEntriesRes, insightsRes] = await Promise.all([
+  // Streak window: 35 days gives us a clean month-over-month streak signal
+  const thirtyFiveDaysAgo = new Date()
+  thirtyFiveDaysAgo.setDate(thirtyFiveDaysAgo.getDate() - 35)
+  const streakWindowStr = thirtyFiveDaysAgo.toISOString()
+
+  const [entriesRes, allEntriesRes, insightsRes, streakEntriesRes] = await Promise.all([
     // Entries from the past 7 days (for weekly count + domain breakdown)
     service
       .from('soul_entries')
@@ -58,6 +63,12 @@ export async function GET(request: NextRequest) {
       .in('user_id', ids)
       .gte('delivered_date', thisWeekStart)
       .order('delivered_date', { ascending: false }),
+    // Streak window: 35 days of dates so streak calculation is accurate
+    service
+      .from('soul_entries')
+      .select('user_id, created_at')
+      .in('user_id', ids)
+      .gte('created_at', streakWindowStr),
   ])
 
   type EntryRow = { user_id: string; domain: string; created_at: string }
@@ -88,23 +99,23 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // Build streak per user (consecutive days with at least one entry, going back from today)
-  const entriesByUserDate = new Map<string, Set<string>>()
-  for (const e of weekEntries) {
-    const key = `${e.user_id}::${e.created_at.slice(0, 10)}`
-    if (!entriesByUserDate.has(e.user_id)) entriesByUserDate.set(e.user_id, new Set())
-    entriesByUserDate.get(e.user_id)!.add(e.created_at.slice(0, 10))
+  // Build streak per user using 35-day window (consecutive days with at least one entry, going back from today)
+  type StreakEntryRow = { user_id: string; created_at: string }
+  const streakEntries = (streakEntriesRes.data ?? []) as StreakEntryRow[]
+  const streakDatesByUser = new Map<string, Set<string>>()
+  for (const e of streakEntries) {
+    if (!streakDatesByUser.has(e.user_id)) streakDatesByUser.set(e.user_id, new Set())
+    streakDatesByUser.get(e.user_id)!.add(e.created_at.slice(0, 10))
   }
 
   function streakFromDates(dates: Set<string>): number {
     let streak = 0
     const d = new Date()
-    while (true) {
+    while (streak <= 35) {
       if (dates.has(d.toISOString().slice(0, 10))) {
         streak++
         d.setDate(d.getDate() - 1)
       } else break
-      if (streak > 7) break
     }
     return streak
   }
@@ -114,7 +125,7 @@ export async function GET(request: NextRequest) {
       const firstName = (u.display_name ?? u.legal_name ?? '').split(' ')[0] ?? ''
       const entriesThisWeek = weekCountByUser.get(u.id) ?? 0
       const totalEntries = totalCountByUser.get(u.id) ?? 0
-      const streak = streakFromDates(entriesByUserDate.get(u.id) ?? new Set())
+      const streak = streakFromDates(streakDatesByUser.get(u.id) ?? new Set())
       const domainMap = domainCountByUser.get(u.id)
       const topDomain = domainMap
         ? [...domainMap.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null
