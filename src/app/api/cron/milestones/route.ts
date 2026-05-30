@@ -140,14 +140,12 @@ export async function GET(request: NextRequest) {
 
   if (emails.length > 0) await sendEmails(emails)
 
-  // Persist updated milestone state (best-effort; column may not exist yet)
+  // Persist updated milestone state
   for (const upd of updates) {
-    try {
-      await service
-        .from('users')
-        .update({ milestones_sent: upd.milestones_sent } as Record<string, unknown>)
-        .eq('id', upd.id)
-    } catch { /* column may not exist yet — skip */ }
+    await service
+      .from('users')
+      .update({ milestones_sent: upd.milestones_sent })
+      .eq('id', upd.id)
   }
 
   return NextResponse.json({ sent: emails.length })

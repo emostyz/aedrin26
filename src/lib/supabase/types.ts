@@ -97,6 +97,7 @@ export interface Database {
           setup_complete: boolean
           reminders_enabled: boolean
           last_reminded_on: string | null
+          milestones_sent: Record<string, unknown>
           created_at: string
           updated_at: string
         }
@@ -122,6 +123,7 @@ export interface Database {
           setup_complete?: boolean
           reminders_enabled?: boolean
           last_reminded_on?: string | null
+          milestones_sent?: Record<string, unknown>
           created_at?: string
           updated_at?: string
         }
@@ -157,6 +159,7 @@ export interface Database {
           rationale: string
           delivered_date: string
           soul_entry_id: string | null
+          theme_tag: string | null
           created_at: string
         }
         Insert: {
@@ -167,6 +170,7 @@ export interface Database {
           rationale: string
           delivered_date: string
           soul_entry_id?: string | null
+          theme_tag?: string | null
           created_at?: string
         }
         Update: Partial<Database['public']['Tables']['daily_prompts']['Insert']>
